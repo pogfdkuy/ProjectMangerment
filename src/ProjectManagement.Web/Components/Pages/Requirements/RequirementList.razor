@@ -1,0 +1,167 @@
+@page "/requirements"
+@attribute [Authorize]
+@rendermode InteractiveServer
+@using Microsoft.EntityFrameworkCore
+@using ProjectManagement.Web.Data
+@using ProjectManagement.Web.Models
+@using ProjectManagement.Web.Services
+@inject IRequirementService RequirementService
+@inject ApplicationDbContext Db
+@inject NavigationManager Nav
+
+<PageTitle>一般需求列表</PageTitle>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1>一般需求列表</h1>
+    <AuthorizeView Roles="Admin,Manager">
+        <Authorized><a class="btn btn-primary" href="/requirements/new">+ 新增需求</a></Authorized>
+    </AuthorizeView>
+</div>
+
+<div class="row g-2 mb-3">
+    <div class="col-auto">
+        <select class="form-select" @bind="filterDepartmentId" @bind:after="ReloadAsync">
+            <option value="">全部單位</option>
+            @foreach (var d in departments)
+            {
+                <option value="@d.Id">@d.Name</option>
+            }
+        </select>
+    </div>
+    <div class="col-auto">
+        <select class="form-select" @bind="filterCategoryId" @bind:after="ReloadAsync">
+            <option value="">全部類別</option>
+            @foreach (var c in categories)
+            {
+                <option value="@c.Id">@c.Name</option>
+            }
+        </select>
+    </div>
+    <div class="col-auto">
+        <select class="form-select" @bind="filterStatus" @bind:after="ReloadAsync">
+            <option value="">全部狀態</option>
+            @foreach (var s in Enum.GetValues<RequirementStatus>())
+            {
+                <option value="@s">@StatusText(s)</option>
+            }
+        </select>
+    </div>
+    <div class="col-auto">
+        <select class="form-select" @bind="filterResponsibleUserId" @bind:after="ReloadAsync">
+            <option value="">全部負責人</option>
+            @foreach (var u in users)
+            {
+                <option value="@u.Id">@u.DisplayName</option>
+            }
+        </select>
+    </div>
+    <div class="col-auto">
+        <input class="form-control" placeholder="搜尋需求標題" @bind="filterKeyword" @bind:event="oninput" @bind:after="ReloadAsync" />
+    </div>
+    <div class="col-auto">
+        <select class="form-select" @bind="sortBy" @bind:after="ApplySort">
+            <option value="created">排序：建立時間（新到舊）</option>
+            <option value="score">排序：效益分數（高到低）</option>
+        </select>
+    </div>
+</div>
+
+@if (requirements is null)
+{
+    <p><em>載入中…</em></p>
+}
+else if (requirements.Count == 0)
+{
+    <p class="text-muted">沒有符合條件的需求。</p>
+}
+else
+{
+    <table class="table table-hover align-middle">
+        <thead>
+            <tr>
+                <th>標題</th>
+                <th>單位</th>
+                <th>系統類別</th>
+                <th>負責人</th>
+                <th>預計期間</th>
+                <th>進度</th>
+                <th>分數</th>
+                <th>狀態</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var r in requirements)
+            {
+                <tr style="cursor:pointer" @onclick="() => NavigateToDetail(r.Id)">
+                    <td>@r.Title</td>
+                    <td>@(r.Department?.Name ?? "—")</td>
+                    <td>@(r.SystemCategory?.Name ?? "—")</td>
+                    <td>@(r.ResponsibleDisplayName ?? "未指派")</td>
+                    <td>@FormatDate(r.PlannedStartDate) ～ @FormatDate(r.PlannedEndDate)</td>
+                    <td>
+                        <div class="progress" style="height:18px;min-width:100px">
+                            <div class="progress-bar" style="width:@(r.ProgressPercent)%">@r.ProgressPercent %</div>
+                        </div>
+                    </td>
+                    <td>@r.TotalScore</td>
+                    <td>@StatusText(r.Status)</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private List<GeneralRequirement>? requirements;
+    private List<Department> departments = [];
+    private List<SystemCategory> categories = [];
+    private List<ApplicationUser> users = [];
+
+    private string filterDepartmentId = "";
+    private string filterCategoryId = "";
+    private string filterStatus = "";
+    private string filterResponsibleUserId = "";
+    private string filterKeyword = "";
+    private string sortBy = "created";
+
+    protected override async Task OnInitializedAsync()
+    {
+        departments = await Db.Departments.Where(d => d.IsActive).OrderBy(d => d.Name).ToListAsync();
+        categories = await Db.SystemCategories.Where(c => c.IsActive).OrderBy(c => c.Name).ToListAsync();
+        users = await Db.Users.Where(u => u.IsActive).OrderBy(u => u.DisplayName).ToListAsync();
+        await ReloadAsync();
+    }
+
+    private async Task ReloadAsync()
+    {
+        int? deptId = int.TryParse(filterDepartmentId, out var d) ? d : null;
+        int? catId = int.TryParse(filterCategoryId, out var c) ? c : null;
+        RequirementStatus? status = Enum.TryParse<RequirementStatus>(filterStatus, out var s) ? s : null;
+        string? responsibleUserId = string.IsNullOrWhiteSpace(filterResponsibleUserId) ? null : filterResponsibleUserId;
+
+        requirements = await RequirementService.GetListAsync(deptId, catId, status, filterKeyword, responsibleUserId);
+        ApplySort();
+    }
+
+    /// <summary>TotalScore 是計算出來的欄位（不在資料庫裡），所以排序要在抓回清單之後、在記憶體裡排。</summary>
+    private void ApplySort()
+    {
+        if (requirements is null) return;
+        requirements = sortBy == "score"
+            ? requirements.OrderByDescending(r => r.TotalScore).ToList()
+            : requirements.OrderByDescending(r => r.CreatedAt).ToList();
+    }
+
+    private void NavigateToDetail(int id) => Nav.NavigateTo($"/requirements/{id}");
+
+    private static string FormatDate(DateTime? date) => date?.ToString("yyyy-MM-dd") ?? "—";
+
+    private static string StatusText(RequirementStatus status) => status switch
+    {
+        RequirementStatus.NotStarted => "未開始",
+        RequirementStatus.InProgress => "進行中",
+        RequirementStatus.Completed => "已完成",
+        RequirementStatus.OnHold => "擱置",
+        _ => status.ToString()
+    };
+}

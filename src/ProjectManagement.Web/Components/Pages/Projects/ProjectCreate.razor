@@ -1,0 +1,178 @@
+@page "/projects/new"
+@attribute [Authorize(Roles = "Admin,Manager")]
+@rendermode InteractiveServer
+@using Microsoft.EntityFrameworkCore
+@using ProjectManagement.Web.Data
+@using ProjectManagement.Web.Models
+@using ProjectManagement.Web.Services
+@inject IProjectService ProjectService
+@inject ApplicationDbContext Db
+@inject NavigationManager Nav
+
+<PageTitle>新增專案</PageTitle>
+
+<h1>新增專案</h1>
+
+<EditForm Model="model" OnValidSubmit="SubmitAsync" FormName="CreateProject">
+    <DataAnnotationsValidator />
+    <ValidationSummary />
+
+    <div class="mb-3">
+        <label class="form-label">專案名稱</label>
+        <InputText class="form-control" @bind-Value="model.Name" />
+    </div>
+
+    <div class="mb-3">
+        <label class="form-label">說明</label>
+        <InputTextArea class="form-control" @bind-Value="model.Description" rows="3" />
+    </div>
+
+    <div class="mb-3">
+        <label class="form-label">備註</label>
+        <InputTextArea class="form-control" @bind-Value="model.Remarks" rows="2" />
+    </div>
+
+    <div class="row">
+        <div class="col-md-4 mb-3">
+            <label class="form-label">單位</label>
+            <InputSelect class="form-select" @bind-Value="model.DepartmentId">
+                <option value="">（未指定）</option>
+                @foreach (var d in departments)
+                {
+                    <option value="@d.Id">@d.Name</option>
+                }
+            </InputSelect>
+        </div>
+        <div class="col-md-4 mb-3">
+            <label class="form-label">系統類別</label>
+            <InputSelect class="form-select" @bind-Value="model.SystemCategoryId">
+                <option value="">（未指定）</option>
+                @foreach (var c in categories)
+                {
+                    <option value="@c.Id">@c.Name</option>
+                }
+            </InputSelect>
+        </div>
+        <div class="col-md-4 mb-3">
+            <label class="form-label">負責人</label>
+            <InputSelect class="form-select mb-1" @bind-Value="model.ResponsibleUserId">
+                <option value="">（未指定 / 用下方手動輸入）</option>
+                @foreach (var u in users)
+                {
+                    <option value="@u.Id">@u.DisplayName</option>
+                }
+            </InputSelect>
+            <InputText class="form-control form-control-sm" @bind-Value="model.ResponsibleUserName" placeholder="或手動輸入姓名（清單沒有時）" />
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-md-4 mb-3">
+            <label class="form-label">需求者</label>
+            <InputSelect class="form-select mb-1" @bind-Value="model.RequesterUserId">
+                <option value="">（未指定 / 用下方手動輸入）</option>
+                @foreach (var u in users)
+                {
+                    <option value="@u.Id">@u.DisplayName</option>
+                }
+            </InputSelect>
+            <InputText class="form-control form-control-sm" @bind-Value="model.RequesterUserName" placeholder="或手動輸入姓名（清單沒有時）" />
+        </div>
+        <div class="col-md-4 mb-3">
+            <label class="form-label">開發者</label>
+            <InputSelect class="form-select mb-1" @bind-Value="model.DeveloperUserId">
+                <option value="">（未指定 / 用下方手動輸入）</option>
+                @foreach (var u in users)
+                {
+                    <option value="@u.Id">@u.DisplayName</option>
+                }
+            </InputSelect>
+            <InputText class="form-control form-control-sm" @bind-Value="model.DeveloperUserName" placeholder="或手動輸入姓名（清單沒有時）" />
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-md-4 mb-3">
+            <label class="form-label">狀態</label>
+            <InputSelect class="form-select" @bind-Value="model.Status">
+                @foreach (var s in Enum.GetValues<ProjectStatus>())
+                {
+                    <option value="@s">@s</option>
+                }
+            </InputSelect>
+        </div>
+        <div class="col-md-4 mb-3">
+            <label class="form-label">預計開始時間</label>
+            <InputDate class="form-control" @bind-Value="model.PlannedStartDate" />
+        </div>
+        <div class="col-md-4 mb-3">
+            <label class="form-label">預計結束時間</label>
+            <InputDate class="form-control" @bind-Value="model.PlannedEndDate" />
+        </div>
+    </div>
+
+    <hr />
+    <h6>效益分數評估<span class="text-muted small">（用來排優先順序、統計績效，非正式KPI考核）</span></h6>
+    <div class="row">
+        <div class="col-md-3 mb-3">
+            <label class="form-label">工作困難度（做之前）</label>
+            <InputSelect class="form-select" @bind-Value="model.DifficultyBefore">
+                <option value="">（未評估）</option>
+                @foreach (var (level, description) in ScoreCalculator.DifficultyLevels)
+                {
+                    <option value="@level">@description</option>
+                }
+            </InputSelect>
+        </div>
+        <div class="col-md-3 mb-3">
+            <label class="form-label">工作困難度（做之後，預估）</label>
+            <InputSelect class="form-select" @bind-Value="model.DifficultyAfter">
+                <option value="">（未評估）</option>
+                @foreach (var (level, description) in ScoreCalculator.DifficultyLevels)
+                {
+                    <option value="@level">@description</option>
+                }
+            </InputSelect>
+        </div>
+        <div class="col-md-6 mb-3">
+            <label class="form-label d-block">效益性（符合幾項對應分數：1項2分／2項5分／3項10分）</label>
+            <div class="form-check">
+                <InputCheckbox class="form-check-input" id="newBenefitPrimary" @bind-Value="model.HasPrimaryBenefit" />
+                <label class="form-check-label" for="newBenefitPrimary">主要性（節省金額達每月10萬）</label>
+            </div>
+            <div class="form-check">
+                <InputCheckbox class="form-check-input" id="newBenefitLongTerm" @bind-Value="model.HasLongTermBenefit" />
+                <label class="form-check-label" for="newBenefitLongTerm">長期性（屢屢對策失效）</label>
+            </div>
+            <div class="form-check">
+                <InputCheckbox class="form-check-input" id="newBenefitCrossUnit" @bind-Value="model.HasCrossUnitBenefit" />
+                <label class="form-check-label" for="newBenefitCrossUnit">綜合性（跨2個單位以上的問題）</label>
+            </div>
+        </div>
+    </div>
+
+    <p class="text-muted">建立後即可在專案詳情頁新增子工作項目並設定預估時數；專案總時數與完成度會自動計算。</p>
+
+    <button type="submit" class="btn btn-primary">建立專案</button>
+    <a class="btn btn-secondary" href="/projects">取消</a>
+</EditForm>
+
+@code {
+    private Project model = new();
+    private List<Department> departments = [];
+    private List<SystemCategory> categories = [];
+    private List<ApplicationUser> users = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        departments = await Db.Departments.Where(d => d.IsActive).OrderBy(d => d.Name).ToListAsync();
+        categories = await Db.SystemCategories.Where(c => c.IsActive).OrderBy(c => c.Name).ToListAsync();
+        users = await Db.Users.Where(u => u.IsActive).OrderBy(u => u.DisplayName).ToListAsync();
+    }
+
+    private async Task SubmitAsync()
+    {
+        var created = await ProjectService.CreateAsync(model);
+        Nav.NavigateTo($"/projects/{created.Id}");
+    }
+}

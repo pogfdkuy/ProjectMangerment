@@ -1,0 +1,115 @@
+@page "/Account/Login"
+@layout AuthLayout
+
+@using System.ComponentModel.DataAnnotations
+@using Microsoft.AspNetCore.Authentication
+@using Microsoft.AspNetCore.Identity
+@using ProjectManagement.Web.Data
+
+@inject SignInManager<ApplicationUser> SignInManager
+@inject ILogger<Login> Logger
+@inject NavigationManager NavigationManager
+@inject IdentityRedirectManager RedirectManager
+
+<PageTitle>登入</PageTitle>
+
+<div class="login-page">
+    <div class="login-card">
+        <div class="login-brand">ProjectManagement.Web</div>
+        <h1>登入</h1>
+
+        <EditForm Model="Input" method="post" OnValidSubmit="LoginUser" FormName="login">
+            <DataAnnotationsValidator />
+            <StatusMessage Message="@errorMessage" />
+            <ValidationSummary class="text-danger" role="alert" />
+
+            <div class="mb-3">
+                <label for="account" class="form-label">帳號</label>
+                <InputText id="account" @bind-Value="Input.Account" class="form-control" autocomplete="username" aria-required="true" placeholder="帳號" />
+                <ValidationMessage For="() => Input.Account" class="text-danger" />
+            </div>
+            <div class="mb-3">
+                <label for="password" class="form-label">密碼</label>
+                <InputText id="password" type="password" @bind-Value="Input.Password" class="form-control" autocomplete="current-password" aria-required="true" placeholder="密碼" />
+                <ValidationMessage For="() => Input.Password" class="text-danger" />
+            </div>
+            <div class="form-check mb-3">
+                <InputCheckbox @bind-Value="Input.RememberMe" class="form-check-input" id="rememberMe" />
+                <label class="form-check-label" for="rememberMe">記住我</label>
+            </div>
+            <button type="submit" class="w-100 btn btn-primary btn-lg">登入</button>
+        </EditForm>
+
+        <div class="login-links">
+            <a href="Account/ForgotPassword">忘記密碼？</a>
+            <a href="@(NavigationManager.GetUriWithQueryParameters("Account/Register", new Dictionary<string, object?> { ["ReturnUrl"] = ReturnUrl }))">註冊新帳號</a>
+        </div>
+    </div>
+</div>
+
+@code {
+    private string? errorMessage;
+
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    [SupplyParameterFromForm]
+    private InputModel Input { get; set; } = new();
+
+    [SupplyParameterFromQuery]
+    private string? ReturnUrl { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (HttpMethods.IsGet(HttpContext.Request.Method))
+        {
+            // Clear the existing external cookie to ensure a clean login process
+            await HttpContext.SignOutAsync(IdentityConstants.ExternalScheme);
+        }
+    }
+
+    public async Task LoginUser()
+    {
+        // This doesn't count login failures towards account lockout
+        // To enable password failures to trigger account lockout, set lockoutOnFailure: true
+        var result = await SignInManager.PasswordSignInAsync(Input.Account, Input.Password, Input.RememberMe, lockoutOnFailure: false);
+        if (result.Succeeded)
+        {
+            Logger.LogInformation("User logged in.");
+            RedirectManager.RedirectTo(ReturnUrl);
+        }
+        else if (result.RequiresTwoFactor)
+        {
+            RedirectManager.RedirectTo(
+                "Account/LoginWith2fa",
+                new() { ["returnUrl"] = ReturnUrl, ["rememberMe"] = Input.RememberMe });
+        }
+        else if (result.IsLockedOut)
+        {
+            Logger.LogWarning("User account locked out.");
+            RedirectManager.RedirectTo("Account/Lockout");
+        }
+        else
+        {
+            errorMessage = "帳號或密碼錯誤，請再試一次。";
+        }
+    }
+
+    private sealed class InputModel
+    {
+        // 注意：這裡故意不加 [EmailAddress]。帳號在「使用者與角色」頁面建立時雖然欄位叫「帳號 (Email)」，
+        // 但實際上可以輸入任意文字（不一定是有效 email 格式），登入時如果硬性要求 email 格式，
+        // 會導致這類帳號永遠無法登入、卡在「Email 格式不正確」的驗證錯誤。ASP.NET Identity 的
+        // PasswordSignInAsync 本來就是用 UserName 做查找比對，不限定一定要是 email 字串。
+        [Required(ErrorMessage = "請輸入帳號")]
+        [Display(Name = "帳號")]
+        public string Account { get; set; } = "";
+
+        [Required(ErrorMessage = "請輸入密碼")]
+        [DataType(DataType.Password)]
+        public string Password { get; set; } = "";
+
+        [Display(Name = "記住我")]
+        public bool RememberMe { get; set; }
+    }
+}

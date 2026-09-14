@@ -1,0 +1,28 @@
+@inherits LayoutComponentBase
+@inject NavigationManager NavigationManager
+
+@* 給登入這類「單純畫面」用的版面：不包 MainLayout 的側邊欄／導覽列，
+   只置中顯示內容本身。HttpContext 判斷邏輯沿用 AccountLayout 的做法，
+   Identity 頁面需要 HttpContext 才能寫入 cookie，互動模式下沒有 HttpContext
+   時就強制重新整理、轉回伺服器端算繪一次。 *@
+@if (HttpContext is null)
+{
+    <p>Loading...</p>
+}
+else
+{
+    @Body
+}
+
+@code {
+    [CascadingParameter]
+    private HttpContext? HttpContext { get; set; }
+
+    protected override void OnParametersSet()
+    {
+        if (HttpContext is null)
+        {
+            NavigationManager.Refresh(forceReload: true);
+        }
+    }
+}

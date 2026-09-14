@@ -1,0 +1,149 @@
+@page "/"
+@attribute [Authorize]
+@rendermode InteractiveServer
+@using Microsoft.AspNetCore.Identity
+@using ProjectManagement.Web.Data
+@using ProjectManagement.Web.Models
+@using ProjectManagement.Web.Services
+@inject IProjectService ProjectService
+@inject IRequirementService RequirementService
+@inject UserManager<ApplicationUser> UserManager
+@inject AuthenticationStateProvider AuthProvider
+
+<PageTitle>首頁</PageTitle>
+
+<h1>首頁</h1>
+
+@if (currentUser is null)
+{
+    <p><em>載入中…</em></p>
+}
+else
+{
+    <p>你好，@currentUser.DisplayName（@string.Join("、", roles)）</p>
+
+    <div class="row g-3 mb-4">
+        <div class="col-md-3">
+            <div class="card text-bg-primary">
+                <div class="card-body">
+                    <div class="fs-2">@myProjects.Count</div>
+                    <div>我負責的專案</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-bg-info">
+                <div class="card-body">
+                    <div class="fs-2">@myRequirements.Count</div>
+                    <div>我負責的需求</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-bg-secondary">
+                <div class="card-body">
+                    <div class="fs-2">@allProjects.Count</div>
+                    <div>專案總數</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-bg-secondary">
+                <div class="card-body">
+                    <div class="fs-2">@allRequirements.Count</div>
+                    <div>一般需求總數</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-md-6">
+            <h4>我負責的專案</h4>
+            @if (myProjects.Count == 0)
+            {
+                <p class="text-muted">目前沒有你負責的專案。</p>
+            }
+            else
+            {
+                <table class="table table-sm">
+                    <thead><tr><th>專案名稱</th><th>完成度</th><th>狀態</th></tr></thead>
+                    <tbody>
+                        @foreach (var p in myProjects)
+                        {
+                            <tr>
+                                <td><a href="@($"/projects/{p.Id}")">@p.Name</a></td>
+                                <td>@p.CompletionPercent %</td>
+                                <td>@StatusText(p.Status)</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>
+        <div class="col-md-6">
+            <h4>我負責的一般需求</h4>
+            @if (myRequirements.Count == 0)
+            {
+                <p class="text-muted">目前沒有你負責的一般需求。</p>
+            }
+            else
+            {
+                <table class="table table-sm">
+                    <thead><tr><th>需求標題</th><th>進度</th><th>狀態</th></tr></thead>
+                    <tbody>
+                        @foreach (var r in myRequirements)
+                        {
+                            <tr>
+                                <td><a href="@($"/requirements/{r.Id}")">@r.Title</a></td>
+                                <td>@r.ProgressPercent %</td>
+                                <td>@StatusText(r.Status)</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    private ApplicationUser? currentUser;
+    private IList<string> roles = [];
+    private List<Project> allProjects = [];
+    private List<GeneralRequirement> allRequirements = [];
+    private List<Project> myProjects = [];
+    private List<GeneralRequirement> myRequirements = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthProvider.GetAuthenticationStateAsync();
+        currentUser = await UserManager.GetUserAsync(authState.User);
+        if (currentUser is null) return;
+
+        roles = await UserManager.GetRolesAsync(currentUser);
+
+        allProjects = await ProjectService.GetListAsync();
+        allRequirements = await RequirementService.GetListAsync();
+        myProjects = allProjects.Where(p => p.ResponsibleUserId == currentUser.Id).ToList();
+        myRequirements = allRequirements.Where(r => r.ResponsibleUserId == currentUser.Id).ToList();
+    }
+
+    private static string StatusText(ProjectStatus status) => status switch
+    {
+        ProjectStatus.NotStarted => "未開始",
+        ProjectStatus.InProgress => "進行中",
+        ProjectStatus.Completed => "已完成",
+        ProjectStatus.OnHold => "暫停",
+        _ => status.ToString()
+    };
+
+    private static string StatusText(RequirementStatus status) => status switch
+    {
+        RequirementStatus.NotStarted => "未開始",
+        RequirementStatus.InProgress => "進行中",
+        RequirementStatus.Completed => "已完成",
+        RequirementStatus.OnHold => "擱置",
+        _ => status.ToString()
+    };
+}

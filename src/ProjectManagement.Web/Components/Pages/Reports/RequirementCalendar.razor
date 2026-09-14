@@ -1,0 +1,119 @@
+@page "/reports/calendar"
+@attribute [Authorize(Roles = "Admin,Manager")]
+@rendermode InteractiveServer
+@using ProjectManagement.Web.Services
+@inject IReportService ReportService
+
+<PageTitle>需求行事曆</PageTitle>
+
+<div class="d-flex justify-content-between align-items-center mb-1">
+    <h1 class="mb-0">@year 年 @month 月</h1>
+    <div>
+        <button class="btn btn-outline-secondary btn-sm" @onclick="PrevMonthAsync">‹ 上個月</button>
+        <button class="btn btn-outline-secondary btn-sm" @onclick="TodayAsync">今天</button>
+        <button class="btn btn-outline-secondary btn-sm" @onclick="NextMonthAsync">下個月 ›</button>
+    </div>
+</div>
+<p class="text-muted">
+    專案與一般需求的到期日、以及實際完成日。
+    <span class="badge cal-info">到期</span>
+    <span class="badge cal-danger">已逾期未完成</span>
+    <span class="badge cal-success">完成</span>
+</p>
+
+@if (loading)
+{
+    <p><em>載入中…</em></p>
+}
+else
+{
+    <div class="calendar-grid">
+        @foreach (var wd in weekdayLabels)
+        {
+            <div class="calendar-weekday">@wd</div>
+        }
+        @foreach (var week in weeks)
+        {
+            @foreach (var day in week)
+            {
+                var dayItems = ItemsForDay(day);
+                var isOut = day.Month != month;
+                var isToday = day.Date == DateTime.Today;
+                <div class="calendar-cell @(isOut ? "calendar-cell-out" : "") @(isToday ? "calendar-cell-today" : "")">
+                    <div class="calendar-date">@day.Day</div>
+                    @foreach (var it in dayItems)
+                    {
+                        <a class="calendar-item @it.ColorClass" href="@it.Url" title="@($"{it.Kind}：{it.Title}")">@it.Kind：@it.Title</a>
+                    }
+                </div>
+            }
+        }
+    </div>
+}
+
+@code {
+    private static readonly string[] weekdayLabels = ["一", "二", "三", "四", "五", "六", "日"];
+
+    private int year = DateTime.Today.Year;
+    private int month = DateTime.Today.Month;
+    private List<CalendarItem> items = [];
+    private List<List<DateTime>> weeks = [];
+    private bool loading = true;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        loading = true;
+        items = await ReportService.GetCalendarItemsAsync(year, month);
+        BuildWeeks();
+        loading = false;
+    }
+
+    /// <summary>週一為每週第一天，補齊上個月／下個月的日期讓格子排滿整週。</summary>
+    private void BuildWeeks()
+    {
+        var monthStart = new DateTime(year, month, 1);
+        var monthEnd = monthStart.AddMonths(1).AddDays(-1);
+        var diff = (7 + (monthStart.DayOfWeek - DayOfWeek.Monday)) % 7;
+        var gridStart = monthStart.AddDays(-diff);
+
+        weeks = [];
+        var cursor = gridStart;
+        while (true)
+        {
+            var week = new List<DateTime>();
+            for (var d = 0; d < 7; d++)
+            {
+                week.Add(cursor);
+                cursor = cursor.AddDays(1);
+            }
+            weeks.Add(week);
+
+            if (cursor > monthEnd) break;
+        }
+    }
+
+    private List<CalendarItem> ItemsForDay(DateTime day) => items.Where(i => i.Date.Date == day.Date).ToList();
+
+    private async Task PrevMonthAsync()
+    {
+        month--;
+        if (month < 1) { month = 12; year--; }
+        await LoadAsync();
+    }
+
+    private async Task NextMonthAsync()
+    {
+        month++;
+        if (month > 12) { month = 1; year++; }
+        await LoadAsync();
+    }
+
+    private async Task TodayAsync()
+    {
+        year = DateTime.Today.Year;
+        month = DateTime.Today.Month;
+        await LoadAsync();
+    }
+}

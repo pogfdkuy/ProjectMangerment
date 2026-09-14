@@ -1,0 +1,61 @@
+@page "/admin/categories"
+@attribute [Authorize(Roles = "Admin")]
+@rendermode InteractiveServer
+@using Microsoft.EntityFrameworkCore
+@using ProjectManagement.Web.Data
+@using ProjectManagement.Web.Models
+@inject ApplicationDbContext Db
+
+<PageTitle>系統類別維護</PageTitle>
+
+<h1>系統類別維護</h1>
+<p class="text-muted">例如 SFCS、機況、標籤、品質…專案與一般需求各自只能選擇其中一個類別（單選）。</p>
+
+<table class="table">
+    <thead><tr><th>名稱</th><th>啟用</th><th></th></tr></thead>
+    <tbody>
+        @foreach (var c in categories)
+        {
+            <tr>
+                <td><input class="form-control" @bind="c.Name" /></td>
+                <td><input type="checkbox" @bind="c.IsActive" /></td>
+                <td><button class="btn btn-sm btn-primary" @onclick="() => SaveAsync(c)">儲存</button></td>
+            </tr>
+        }
+    </tbody>
+</table>
+
+<div class="card"><div class="card-body">
+    <h6>新增系統類別</h6>
+    <div class="input-group">
+        <input class="form-control" placeholder="類別名稱" @bind="newName" />
+        <button class="btn btn-primary" @onclick="AddAsync">新增</button>
+    </div>
+</div></div>
+
+@code {
+    private List<SystemCategory> categories = [];
+    private string newName = "";
+
+    protected override async Task OnInitializedAsync() => await ReloadAsync();
+
+    private async Task ReloadAsync()
+    {
+        categories = await Db.SystemCategories.OrderBy(c => c.Name).ToListAsync();
+    }
+
+    private async Task SaveAsync(SystemCategory c)
+    {
+        Db.SystemCategories.Update(c);
+        await Db.SaveChangesAsync();
+    }
+
+    private async Task AddAsync()
+    {
+        if (string.IsNullOrWhiteSpace(newName)) return;
+        Db.SystemCategories.Add(new SystemCategory { Name = newName.Trim() });
+        await Db.SaveChangesAsync();
+        newName = "";
+        await ReloadAsync();
+    }
+}

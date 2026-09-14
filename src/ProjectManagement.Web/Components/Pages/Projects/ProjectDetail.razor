@@ -1,0 +1,641 @@
+@page "/projects/{Id:int}"
+@attribute [Authorize]
+@rendermode InteractiveServer
+@using System.ComponentModel.DataAnnotations
+@using Microsoft.AspNetCore.Identity
+@using Microsoft.EntityFrameworkCore
+@using ProjectManagement.Web.Data
+@using ProjectManagement.Web.Models
+@using ProjectManagement.Web.Services
+@inject IProjectService ProjectService
+@inject IAttachmentService AttachmentService
+@inject IItemNoteService ItemNoteService
+@inject ApplicationDbContext Db
+@inject UserManager<ApplicationUser> UserManager
+@inject AuthenticationStateProvider AuthProvider
+@inject NavigationManager Nav
+
+<PageTitle>專案詳情</PageTitle>
+
+@if (project is null)
+{
+    <p><em>載入中…</em></p>
+}
+else
+{
+    <div class="d-flex justify-content-between align-items-start mb-3">
+        <div>
+            <h1>@project.Name</h1>
+            <p class="text-muted mb-1">@project.Description</p>
+            @if (!string.IsNullOrWhiteSpace(project.Remarks))
+            {
+                <p class="text-muted mb-1"><strong>備註：</strong>@project.Remarks</p>
+            }
+            <p class="mb-0">
+                單位：@(project.Department?.Name ?? "—")
+                系統類別：@(project.SystemCategory?.Name ?? "—")
+                負責人：@(project.ResponsibleDisplayName ?? "未指派")
+                需求者：@(project.RequesterDisplayName ?? "—")
+                開發者：@(project.DeveloperDisplayName ?? "—")
+                狀態：@StatusText(project.Status)
+                預計期間：@FormatDate(project.PlannedStartDate) ～ @FormatDate(project.PlannedEndDate)
+            </p>
+        </div>
+        <div class="text-end">
+            @if (canEdit)
+            {
+                <button class="btn btn-outline-secondary" @onclick="() => showEditForm = !showEditForm">
+                    @(showEditForm ? "取消編輯" : "編輯基本資料")
+                </button>
+            }
+            <button class="btn btn-outline-secondary ms-1" @onclick="() => showScheduleLogs = !showScheduleLogs">
+                時程異動紀錄 (@scheduleLogs.Count)
+            </button>
+        </div>
+    </div>
+
+    @if (showScheduleLogs)
+    {
+        <div class="card mb-3"><div class="card-body">
+            <h6 class="mb-2">時程異動紀錄<span class="text-muted small">（預計開始／結束時間每次被改動都會記一筆）</span></h6>
+            @if (scheduleLogsError is not null)
+            {
+                <div class="alert alert-warning small mb-0">@scheduleLogsError</div>
+            }
+            else if (scheduleLogs.Count == 0)
+            {
+                <p class="text-muted small mb-0">尚無異動紀錄。</p>
+            }
+            else
+            {
+                <table class="table table-sm mb-0">
+                    <thead><tr><th>異動時間</th><th>異動者</th><th>預計開始時間</th><th>預計結束時間</th></tr></thead>
+                    <tbody>
+                        @foreach (var log in scheduleLogs)
+                        {
+                            <tr>
+                                <td class="small">@log.ChangedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</td>
+                                <td class="small">@(log.ChangedByUser?.DisplayName ?? "—")</td>
+                                <td class="small">@FormatDate(log.OldPlannedStartDate) → @FormatDate(log.NewPlannedStartDate)</td>
+                                <td class="small">@FormatDate(log.OldPlannedEndDate) → @FormatDate(log.NewPlannedEndDate)</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </div></div>
+    }
+
+    @if (showEditForm && canEdit)
+    {
+        <div class="card mb-4">
+            <div class="card-body">
+                <EditForm Model="editModel" OnValidSubmit="SaveEditAsync">
+                    <DataAnnotationsValidator />
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">專案名稱</label>
+                            <InputText class="form-control" @bind-Value="editModel.Name" />
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">負責人</label>
+                            <InputSelect class="form-select mb-1" @bind-Value="editModel.ResponsibleUserId" disabled="@(!isManagerOrAdmin)">
+                                <option value="">（未指定 / 用下方手動輸入）</option>
+                                @foreach (var u in users)
+                                {
+                                    <option value="@u.Id">@u.DisplayName</option>
+                                }
+                            </InputSelect>
+                            <InputText class="form-control form-control-sm" @bind-Value="editModel.ResponsibleUserName" disabled="@(!isManagerOrAdmin)" placeholder="或手動輸入姓名（清單沒有時）" />
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">需求者</label>
+                            <InputSelect class="form-select mb-1" @bind-Value="editModel.RequesterUserId">
+                                <option value="">（未指定 / 用下方手動輸入）</option>
+                                @foreach (var u in users)
+                                {
+                                    <option value="@u.Id">@u.DisplayName</option>
+                                }
+                            </InputSelect>
+                            <InputText class="form-control form-control-sm" @bind-Value="editModel.RequesterUserName" placeholder="或手動輸入姓名（清單沒有時）" />
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">開發者</label>
+                            <InputSelect class="form-select mb-1" @bind-Value="editModel.DeveloperUserId">
+                                <option value="">（未指定 / 用下方手動輸入）</option>
+                                @foreach (var u in users)
+                                {
+                                    <option value="@u.Id">@u.DisplayName</option>
+                                }
+                            </InputSelect>
+                            <InputText class="form-control form-control-sm" @bind-Value="editModel.DeveloperUserName" placeholder="或手動輸入姓名（清單沒有時）" />
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">說明</label>
+                        <InputTextArea class="form-control" @bind-Value="editModel.Description" rows="2" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">備註</label>
+                        <InputTextArea class="form-control" @bind-Value="editModel.Remarks" rows="2" />
+                    </div>
+                    <div class="row">
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">單位</label>
+                            <InputSelect class="form-select" @bind-Value="editModel.DepartmentId">
+                                <option value="">（未指定）</option>
+                                @foreach (var d in departments)
+                                {
+                                    <option value="@d.Id">@d.Name</option>
+                                }
+                            </InputSelect>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">系統類別</label>
+                            <InputSelect class="form-select" @bind-Value="editModel.SystemCategoryId">
+                                <option value="">（未指定）</option>
+                                @foreach (var c in categories)
+                                {
+                                    <option value="@c.Id">@c.Name</option>
+                                }
+                            </InputSelect>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">狀態</label>
+                            <InputSelect class="form-select" @bind-Value="editModel.Status">
+                                @foreach (var s in Enum.GetValues<ProjectStatus>())
+                                {
+                                    <option value="@s">@s</option>
+                                }
+                            </InputSelect>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">預計開始時間</label>
+                            <InputDate class="form-control" @bind-Value="editModel.PlannedStartDate" />
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">預計結束時間</label>
+                            <InputDate class="form-control" @bind-Value="editModel.PlannedEndDate" />
+                        </div>
+                    </div>
+
+                    <hr />
+                    <h6>效益分數評估<span class="text-muted small">（用來排優先順序、統計績效，非正式KPI考核）</span></h6>
+                    <div class="row">
+                        <div class="col-md-3 mb-3">
+                            <label class="form-label">工作困難度（做之前）</label>
+                            <InputSelect class="form-select" @bind-Value="editModel.DifficultyBefore">
+                                <option value="">（未評估）</option>
+                                @foreach (var (level, description) in ScoreCalculator.DifficultyLevels)
+                                {
+                                    <option value="@level">@description</option>
+                                }
+                            </InputSelect>
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <label class="form-label">工作困難度（做之後，預估）</label>
+                            <InputSelect class="form-select" @bind-Value="editModel.DifficultyAfter">
+                                <option value="">（未評估）</option>
+                                @foreach (var (level, description) in ScoreCalculator.DifficultyLevels)
+                                {
+                                    <option value="@level">@description</option>
+                                }
+                            </InputSelect>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label d-block">效益性（符合幾項對應分數：1項2分／2項5分／3項10分）</label>
+                            <div class="form-check">
+                                <InputCheckbox class="form-check-input" id="benefitPrimary" @bind-Value="editModel.HasPrimaryBenefit" />
+                                <label class="form-check-label" for="benefitPrimary">主要性（節省金額達每月10萬）</label>
+                            </div>
+                            <div class="form-check">
+                                <InputCheckbox class="form-check-input" id="benefitLongTerm" @bind-Value="editModel.HasLongTermBenefit" />
+                                <label class="form-check-label" for="benefitLongTerm">長期性（屢屢對策失效）</label>
+                            </div>
+                            <div class="form-check">
+                                <InputCheckbox class="form-check-input" id="benefitCrossUnit" @bind-Value="editModel.HasCrossUnitBenefit" />
+                                <label class="form-check-label" for="benefitCrossUnit">綜合性（跨2個單位以上的問題）</label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary">儲存</button>
+                </EditForm>
+            </div>
+        </div>
+    }
+
+    <div class="row mb-4">
+        <div class="col-md-4">
+            <div class="card"><div class="card-body">
+                <div class="fs-3">@project.TotalEstimatedHours 小時</div>
+                <div class="text-muted">專案總時數（子工作項目預估時數總和）</div>
+            </div></div>
+        </div>
+        <div class="col-md-4">
+            <div class="card"><div class="card-body">
+                <div class="fs-3">@project.CompletionPercent %</div>
+                <div class="text-muted">工作完成度（已完成時數 ÷ 總時數）</div>
+            </div></div>
+        </div>
+        <div class="col-md-4">
+            <div class="card"><div class="card-body">
+                <div class="fs-3">@project.TotalScore 分</div>
+                <div class="text-muted">
+                    困難度降低 @(project.DifficultyBefore?.ToString() ?? "—") → @(project.DifficultyAfter?.ToString() ?? "—")（@project.DifficultyReductionScore 分）+ 效益性 @project.BenefitScore 分
+                </div>
+            </div></div>
+        </div>
+    </div>
+
+    <h4>子工作項目</h4>
+    <table class="table">
+        <thead><tr><th>名稱</th><th>說明</th><th>預估時數</th><th>預計開始</th><th>預計結束</th><th>完成</th><th></th></tr></thead>
+        <tbody>
+            @foreach (var t in project.SubTasks.OrderBy(t => t.CreatedAt))
+            {
+                <tr>
+                    <td>@t.Name</td>
+                    <td>@t.Description</td>
+                    <td>@t.EstimatedHours</td>
+                    <td>@FormatDate(t.PlannedStartDate)</td>
+                    <td>@FormatDate(t.PlannedEndDate)</td>
+                    <td>
+                        <input type="checkbox" checked="@t.IsCompleted" disabled="@(!canEdit)"
+                               @onchange="e => ToggleSubTaskAsync(t.Id, (bool)e.Value!)" />
+                    </td>
+                    <td>
+                        <button class="btn btn-sm btn-outline-secondary" @onclick="() => ToggleSubTaskNotesAsync(t.Id)">
+                            說明 (@(subTaskNotes.TryGetValue(t.Id, out var n) ? n.Count : 0))
+                        </button>
+                        @if (canEdit)
+                        {
+                            <button class="btn btn-sm btn-outline-danger ms-1" @onclick="() => DeleteSubTaskAsync(t.Id)">刪除</button>
+                        }
+                    </td>
+                </tr>
+                @if (expandedSubTasks.Contains(t.Id))
+                {
+                    <tr>
+                        <td colspan="7" class="bg-light">
+                            <div class="p-2">
+                                <h6 class="small">子項目說明<span class="text-muted small">（可隨時新增的補充說明，每則說明都可以各自附檔案）</span></h6>
+                                @if (subTaskNotesErrors.TryGetValue(t.Id, out var loadError))
+                                {
+                                    <div class="alert alert-warning small mb-2">@loadError</div>
+                                }
+                                else if (subTaskNotes.TryGetValue(t.Id, out var notesForTask) && notesForTask.Count > 0)
+                                {
+                                    @foreach (var note in notesForTask)
+                                    {
+                                        <div class="border rounded p-2 mb-2 bg-white">
+                                            <div class="d-flex justify-content-between">
+                                                <strong class="small">@(note.CreatedByUser?.DisplayName ?? "—")</strong>
+                                                <span class="text-muted small">@note.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</span>
+                                            </div>
+                                            <div class="small">@note.Content</div>
+                                            @if (subTaskNoteAttachments.TryGetValue(note.Id, out var noteAtt) && noteAtt.Count > 0)
+                                            {
+                                                <ul class="list-unstyled small mt-1 mb-0">
+                                                    @foreach (var a in noteAtt)
+                                                    {
+                                                        <li>📎 <a href="@($"/attachments/{a.Id}/view")" target="_blank">@a.FileName</a></li>
+                                                    }
+                                                </ul>
+                                            }
+                                        </div>
+                                    }
+                                }
+                                else
+                                {
+                                    <p class="text-muted small">尚無說明。</p>
+                                }
+                                @if (canEdit)
+                                {
+                                    // 注意：@bind-Value 不能直接綁到「方法呼叫.屬性」這種運算式（例如
+                                    // GetSubTaskNoteModel(t.Id).Content）—— .NET 8 InputBase 為了產生表單
+                                    // 用的 name 屬性，會用反射把綁定的運算式轉成字串，遇到方法呼叫節點就會丟出
+                                    // "Method calls cannot be formatted" 例外，直接把整個 Blazor circuit 弄崩潰
+                                    // （這正是「點說明會跳出 Reload」的真正原因）。先取出區域變數，改綁區域變數的
+                                    // 屬性（單純成員存取），就不會再觸發這個問題。
+                                    var subTaskNoteModel = GetSubTaskNoteModel(t.Id);
+                                    <EditForm Model="subTaskNoteModel" OnValidSubmit="() => AddSubTaskNoteAsync(t.Id)">
+                                        <DataAnnotationsValidator />
+                                        <div class="mb-2">
+                                            <InputTextArea class="form-control form-control-sm" @bind-Value="subTaskNoteModel.Content" rows="2" placeholder="輸入說明內容…" />
+                                        </div>
+                                        <div class="mb-2">
+                                            <InputFile OnChange="e => OnSubTaskNoteFileSelected(t.Id, e)" />
+                                        </div>
+                                        <button type="submit" class="btn btn-primary btn-sm">送出</button>
+                                        @if (addingSubTaskNote == t.Id)
+                                        {
+                                            <span class="text-muted small ms-2">處理中…</span>
+                                        }
+                                    </EditForm>
+                                }
+                            </div>
+                        </td>
+                    </tr>
+                }
+            }
+        </tbody>
+    </table>
+
+    @if (canEdit)
+    {
+        <div class="card mb-4"><div class="card-body">
+            <h6>新增子工作項目</h6>
+            <EditForm Model="newSubTask" OnValidSubmit="AddSubTaskAsync">
+                <DataAnnotationsValidator />
+                <div class="row g-2 align-items-end">
+                    <div class="col-md-3">
+                        <label class="form-label">名稱</label>
+                        <InputText class="form-control" @bind-Value="newSubTask.Name" />
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">說明</label>
+                        <InputText class="form-control" @bind-Value="newSubTask.Description" />
+                    </div>
+                    <div class="col-md-1">
+                        <label class="form-label">預估時數</label>
+                        <InputNumber class="form-control" @bind-Value="newSubTask.EstimatedHours" />
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">預計開始</label>
+                        <InputDate class="form-control" @bind-Value="newSubTask.PlannedStartDate" />
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">預計結束</label>
+                        <InputDate class="form-control" @bind-Value="newSubTask.PlannedEndDate" />
+                    </div>
+                    <div class="col-md-1">
+                        <button type="submit" class="btn btn-primary w-100">新增</button>
+                    </div>
+                </div>
+            </EditForm>
+        </div></div>
+    }
+
+    <h4>附件</h4>
+    <ul class="list-group mb-3">
+        @foreach (var a in attachments)
+        {
+            <li class="list-group-item d-flex justify-content-between">
+                <a href="@($"/attachments/{a.Id}/view")" target="_blank">@a.FileName</a>
+                <span class="text-muted">@(a.FileSizeBytes / 1024) KB — @a.UploadedByUser?.DisplayName</span>
+            </li>
+        }
+    </ul>
+    @if (canEdit)
+    {
+        <InputFile OnChange="OnFileSelectedAsync" />
+        @if (uploading)
+        {
+            <p class="text-muted">上傳中…</p>
+        }
+    }
+}
+
+@code {
+    [Parameter] public int Id { get; set; }
+
+    private Project? project;
+    private List<Department> departments = [];
+    private List<SystemCategory> categories = [];
+    private List<ApplicationUser> users = [];
+    private List<Attachment> attachments = [];
+
+    private ApplicationUser? currentUser;
+    private bool isManagerOrAdmin;
+    private bool canEdit;
+    private bool showEditForm;
+    private bool showScheduleLogs;
+    private bool uploading;
+    private List<ScheduleChangeLog> scheduleLogs = [];
+    private string? scheduleLogsError;
+
+    private Project editModel = new();
+    private ProjectSubTask newSubTask = new();
+
+    // 子工作項目的「說明記錄」：哪些子項目目前是展開的、每個子項目的說明清單/附件、
+    // 以及每個子項目各自的「新增說明」表單狀態（用字典保存物件參考，確保 EditForm 綁定在重新渲染間穩定）。
+    private HashSet<int> expandedSubTasks = [];
+    private Dictionary<int, List<ItemNote>> subTaskNotes = [];
+    private Dictionary<int, string> subTaskNotesErrors = [];
+    private Dictionary<int, List<Attachment>> subTaskNoteAttachments = [];
+    private Dictionary<int, NewNoteModel> subTaskNoteModels = [];
+    private Dictionary<int, IBrowserFile?> pendingSubTaskNoteFiles = [];
+    private int? addingSubTaskNote;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var authState = await AuthProvider.GetAuthenticationStateAsync();
+        currentUser = await UserManager.GetUserAsync(authState.User);
+        var roles = currentUser is null ? [] : await UserManager.GetRolesAsync(currentUser);
+        isManagerOrAdmin = roles.Contains(RoleNames.Admin) || roles.Contains(RoleNames.Manager);
+
+        departments = await Db.Departments.Where(d => d.IsActive).OrderBy(d => d.Name).ToListAsync();
+        categories = await Db.SystemCategories.Where(c => c.IsActive).OrderBy(c => c.Name).ToListAsync();
+        users = await Db.Users.Where(u => u.IsActive).OrderBy(u => u.DisplayName).ToListAsync();
+
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        project = await ProjectService.GetByIdAsync(Id);
+        if (project is null) return;
+
+        canEdit = isManagerOrAdmin || (currentUser is not null && project.ResponsibleUserId == currentUser.Id);
+
+        editModel = new Project
+        {
+            Id = project.Id,
+            Name = project.Name,
+            Description = project.Description,
+            Remarks = project.Remarks,
+            DepartmentId = project.DepartmentId,
+            SystemCategoryId = project.SystemCategoryId,
+            ResponsibleUserId = project.ResponsibleUserId,
+            ResponsibleUserName = project.ResponsibleUserName,
+            RequesterUserId = project.RequesterUserId,
+            RequesterUserName = project.RequesterUserName,
+            DeveloperUserId = project.DeveloperUserId,
+            DeveloperUserName = project.DeveloperUserName,
+            Status = project.Status,
+            PlannedStartDate = project.PlannedStartDate,
+            PlannedEndDate = project.PlannedEndDate,
+            DifficultyBefore = project.DifficultyBefore,
+            DifficultyAfter = project.DifficultyAfter,
+            HasPrimaryBenefit = project.HasPrimaryBenefit,
+            HasLongTermBenefit = project.HasLongTermBenefit,
+            HasCrossUnitBenefit = project.HasCrossUnitBenefit
+        };
+
+        attachments = await AttachmentService.GetForOwnerAsync(OwnerEntityType.Project, Id);
+
+        // ScheduleChangeLogs 資料表是後來才加的，單獨包一層 try/catch：如果資料庫還沒執行對應的
+        // migration（Update-Database），這裡查詢會丟例外，不應該讓整個詳情頁跟著崩潰。
+        try
+        {
+            scheduleLogs = await ProjectService.GetScheduleChangeLogsAsync(Id);
+            scheduleLogsError = null;
+        }
+        catch (Exception ex)
+        {
+            scheduleLogs = [];
+            scheduleLogsError = $"無法載入時程異動紀錄：{ex.GetType().Name} - {ex.Message}";
+        }
+    }
+
+    private async Task SaveEditAsync()
+    {
+        await ProjectService.UpdateAsync(editModel, currentUser?.Id);
+        showEditForm = false;
+        await LoadAsync();
+    }
+
+    private async Task AddSubTaskAsync()
+    {
+        await ProjectService.AddSubTaskAsync(Id, newSubTask);
+        newSubTask = new ProjectSubTask();
+        await LoadAsync();
+    }
+
+    private async Task ToggleSubTaskAsync(int subTaskId, bool isCompleted)
+    {
+        await ProjectService.SetSubTaskCompletionAsync(subTaskId, isCompleted);
+        await LoadAsync();
+    }
+
+    private async Task DeleteSubTaskAsync(int subTaskId)
+    {
+        await ProjectService.DeleteSubTaskAsync(subTaskId);
+        await LoadAsync();
+    }
+
+    private async Task OnFileSelectedAsync(InputFileChangeEventArgs e)
+    {
+        if (currentUser is null) return;
+        uploading = true;
+        try
+        {
+            var file = e.File;
+            const long maxSize = 20 * 1024 * 1024; // 20MB
+            await using var stream = file.OpenReadStream(maxSize);
+            await AttachmentService.SaveAsync(OwnerEntityType.Project, Id, file.Name, file.ContentType, stream, currentUser.Id);
+            await LoadAsync();
+        }
+        finally
+        {
+            uploading = false;
+        }
+    }
+
+    private static string StatusText(ProjectStatus status) => status switch
+    {
+        ProjectStatus.NotStarted => "未開始",
+        ProjectStatus.InProgress => "進行中",
+        ProjectStatus.Completed => "已完成",
+        ProjectStatus.OnHold => "暫停",
+        _ => status.ToString()
+    };
+
+    private static string FormatDate(DateTime? date) => date?.ToString("yyyy-MM-dd") ?? "—";
+
+    private async Task ToggleSubTaskNotesAsync(int subTaskId)
+    {
+        if (!expandedSubTasks.Add(subTaskId))
+        {
+            expandedSubTasks.Remove(subTaskId);
+            return;
+        }
+
+        await LoadSubTaskNotesAsync(subTaskId);
+    }
+
+    private async Task LoadSubTaskNotesAsync(int subTaskId)
+    {
+        // 說明記錄用到的 ItemNotes 資料表是後來才加的，單獨包一層 try/catch：
+        // 如果資料庫還沒執行對應的 migration（Update-Database），這裡查詢會丟例外，
+        // 不應該讓整個頁面（Blazor circuit）跟著崩潰、只是這個子項目的說明區塊顯示不出來而已。
+        try
+        {
+            var notesForTask = await ItemNoteService.GetForOwnerAsync(OwnerEntityType.ProjectSubTask, subTaskId);
+            subTaskNotes[subTaskId] = notesForTask;
+
+            foreach (var note in notesForTask)
+            {
+                subTaskNoteAttachments[note.Id] = await AttachmentService.GetForOwnerAsync(OwnerEntityType.Note, note.Id);
+            }
+            subTaskNotesErrors.Remove(subTaskId);
+        }
+        catch (Exception ex)
+        {
+            subTaskNotes.Remove(subTaskId);
+            // 把實際例外訊息顯示出來，方便診斷（內部工具，不對外，先求好除錯）。
+            subTaskNotesErrors[subTaskId] = $"無法載入說明記錄：{ex.GetType().Name} - {ex.Message}";
+        }
+    }
+
+    /// <summary>取得（或建立）某個子項目「新增說明」表單所綁定的模型；用字典快取確保同一個子項目重複渲染時拿到同一個物件參考。</summary>
+    private NewNoteModel GetSubTaskNoteModel(int subTaskId)
+    {
+        if (!subTaskNoteModels.TryGetValue(subTaskId, out var model))
+        {
+            model = new NewNoteModel();
+            subTaskNoteModels[subTaskId] = model;
+        }
+        return model;
+    }
+
+    private void OnSubTaskNoteFileSelected(int subTaskId, InputFileChangeEventArgs e) => pendingSubTaskNoteFiles[subTaskId] = e.File;
+
+    private async Task AddSubTaskNoteAsync(int subTaskId)
+    {
+        if (currentUser is null) return;
+        var model = GetSubTaskNoteModel(subTaskId);
+        if (string.IsNullOrWhiteSpace(model.Content)) return;
+
+        addingSubTaskNote = subTaskId;
+        try
+        {
+            ItemNote note;
+            try
+            {
+                note = await ItemNoteService.AddAsync(OwnerEntityType.ProjectSubTask, subTaskId, model.Content, currentUser.Id);
+            }
+            catch (Exception ex)
+            {
+                subTaskNotesErrors[subTaskId] = $"無法新增說明：{ex.GetType().Name} - {ex.Message}";
+                return;
+            }
+
+            if (pendingSubTaskNoteFiles.TryGetValue(subTaskId, out var file) && file is not null)
+            {
+                const long maxSize = 20 * 1024 * 1024; // 20MB
+                await using var stream = file.OpenReadStream(maxSize);
+                await AttachmentService.SaveAsync(OwnerEntityType.Note, note.Id, file.Name, file.ContentType, stream, currentUser.Id);
+                pendingSubTaskNoteFiles[subTaskId] = null;
+            }
+
+            subTaskNoteModels[subTaskId] = new NewNoteModel();
+            await LoadSubTaskNotesAsync(subTaskId);
+        }
+        finally
+        {
+            addingSubTaskNote = null;
+        }
+    }
+
+    private class NewNoteModel
+    {
+        [Required, StringLength(2000)]
+        public string Content { get; set; } = string.Empty;
+    }
+}

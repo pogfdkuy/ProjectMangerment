@@ -1,0 +1,81 @@
+@using System.Security.Claims
+@using ProjectManagement.Web.Models
+@using ProjectManagement.Web.Services
+@inject INotificationService NotificationService
+@inject AuthenticationStateProvider AuthProvider
+@inject NavigationManager Nav
+
+<div class="dropdown">
+    <button class="btn btn-link text-white position-relative" @onclick="ToggleAsync">
+        🔔
+        @if (unreadCount > 0)
+        {
+            <span class="badge rounded-pill bg-danger position-absolute top-0 start-100 translate-middle">@unreadCount</span>
+        }
+    </button>
+
+    @if (open)
+    {
+        <div class="dropdown-menu show p-2" style="right:0;left:auto;min-width:320px;max-height:400px;overflow-y:auto;position:absolute;">
+            @if (notifications.Count == 0)
+            {
+                <div class="text-muted p-2">目前沒有通知。</div>
+            }
+            else
+            {
+                @foreach (var n in notifications)
+                {
+                    <div class="p-2 border-bottom @(n.IsRead ? "" : "bg-light")" style="cursor:pointer" @onclick="() => OpenAsync(n)">
+                        <div class="fw-bold">@n.Title</div>
+                        <div class="small text-muted">@n.Message</div>
+                        <div class="small text-muted">@n.CreatedAt.ToLocalTime().ToString("MM/dd HH:mm")</div>
+                    </div>
+                }
+            }
+        </div>
+    }
+</div>
+
+@code {
+    // 注意：這裡刻意不用 UserManager.GetUserAsync() 去查目前使用者。
+    // 這個元件放在版面配置(MainLayout)裡，會跟頁面本身的內容同時初始化、同時查資料庫；
+    // 如果兩邊都透過 UserManager 存取同一個 Scoped ApplicationDbContext，就會並行衝突，
+    // 丟出 "A second operation was started on this context instance..." 的例外。
+    // 使用者的 Id 其實已經在登入時放進 Cookie 的 Claims principal 裡了（ClaimTypes.NameIdentifier），
+    // 直接從 Claims 讀，完全不用碰資料庫，也就不會跟其他元件搶同一個 DbContext。
+    private bool open;
+    private int unreadCount;
+    private List<Notification> notifications = [];
+    private string? userId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthProvider.GetAuthenticationStateAsync();
+        userId = authState.User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+        if (userId is not null)
+        {
+            unreadCount = await NotificationService.GetUnreadCountAsync(userId);
+        }
+    }
+
+    private async Task ToggleAsync()
+    {
+        open = !open;
+        if (open && userId is not null)
+        {
+            notifications = await NotificationService.GetRecentAsync(userId);
+        }
+    }
+
+    private async Task OpenAsync(Notification n)
+    {
+        if (userId is null) return;
+        await NotificationService.MarkAsReadAsync(n.Id, userId);
+        unreadCount = await NotificationService.GetUnreadCountAsync(userId);
+        if (!string.IsNullOrWhiteSpace(n.Link))
+        {
+            Nav.NavigateTo(n.Link);
+        }
+    }
+}

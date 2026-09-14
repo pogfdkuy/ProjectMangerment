@@ -1,0 +1,169 @@
+@page "/admin/users"
+@attribute [Authorize(Roles = "Admin")]
+@rendermode InteractiveServer
+@using Microsoft.AspNetCore.Identity
+@using Microsoft.EntityFrameworkCore
+@using ProjectManagement.Web.Data
+@using ProjectManagement.Web.Models
+@inject UserManager<ApplicationUser> UserManager
+@inject ApplicationDbContext Db
+
+<PageTitle>使用者與角色</PageTitle>
+
+<h1>使用者與角色</h1>
+
+@if (errorMessage is not null)
+{
+    <div class="alert alert-danger">@errorMessage</div>
+}
+
+<table class="table align-middle">
+    <thead><tr><th>姓名</th><th>帳號 (Email)</th><th>單位</th><th>角色</th><th>啟用</th><th></th></tr></thead>
+    <tbody>
+        @foreach (var row in userRows)
+        {
+            <tr>
+                <td><input class="form-control" @bind="row.User.DisplayName" /></td>
+                <td>@row.User.Email</td>
+                <td>
+                    <select class="form-select" @bind="row.DepartmentId">
+                        <option value="">（未指定）</option>
+                        @foreach (var d in departments)
+                        {
+                            <option value="@d.Id">@d.Name</option>
+                        }
+                    </select>
+                </td>
+                <td>
+                    <select class="form-select" @bind="row.Role">
+                        @foreach (var r in RoleNames.All)
+                        {
+                            <option value="@r">@r</option>
+                        }
+                    </select>
+                </td>
+                <td><input type="checkbox" @bind="row.User.IsActive" /></td>
+                <td><button class="btn btn-sm btn-primary" @onclick="() => SaveAsync(row)">儲存</button></td>
+            </tr>
+        }
+    </tbody>
+</table>
+
+<div class="card"><div class="card-body">
+    <h6>新增使用者帳號</h6>
+    <div class="row g-2 align-items-end">
+        <div class="col-md-3">
+            <label class="form-label">姓名</label>
+            <input class="form-control" @bind="newDisplayName" />
+        </div>
+        <div class="col-md-3">
+            <label class="form-label">帳號 (Email)</label>
+            <input class="form-control" @bind="newEmail" />
+        </div>
+        <div class="col-md-2">
+            <label class="form-label">初始密碼</label>
+            <input class="form-control" type="text" @bind="newPassword" />
+        </div>
+        <div class="col-md-2">
+            <label class="form-label">角色</label>
+            <select class="form-select" @bind="newRole">
+                @foreach (var r in RoleNames.All)
+                {
+                    <option value="@r">@r</option>
+                }
+            </select>
+        </div>
+        <div class="col-md-2">
+            <button class="btn btn-success w-100" @onclick="CreateUserAsync">建立帳號</button>
+        </div>
+    </div>
+    <p class="text-muted mt-2">建立後請請該使用者於「首次登入」後自行至帳戶設定修改密碼。</p>
+</div></div>
+
+@code {
+    private List<UserRow> userRows = [];
+    private List<Department> departments = [];
+    private string? errorMessage;
+
+    private string newDisplayName = "";
+    private string newEmail = "";
+    private string newPassword = "Pass#12345";
+    private string newRole = RoleNames.Member;
+
+    protected override async Task OnInitializedAsync() => await ReloadAsync();
+
+    private async Task ReloadAsync()
+    {
+        departments = await Db.Departments.Where(d => d.IsActive).OrderBy(d => d.Name).ToListAsync();
+
+        var users = await Db.Users.OrderBy(u => u.DisplayName).ToListAsync();
+        userRows = [];
+        foreach (var u in users)
+        {
+            var roles = await UserManager.GetRolesAsync(u);
+            userRows.Add(new UserRow
+            {
+                User = u,
+                DepartmentId = u.DepartmentId?.ToString() ?? "",
+                Role = roles.FirstOrDefault() ?? RoleNames.Viewer
+            });
+        }
+    }
+
+    private async Task SaveAsync(UserRow row)
+    {
+        row.User.DepartmentId = int.TryParse(row.DepartmentId, out var id) ? id : null;
+        await UserManager.UpdateAsync(row.User);
+
+        var currentRoles = await UserManager.GetRolesAsync(row.User);
+        if (!currentRoles.Contains(row.Role))
+        {
+            await UserManager.RemoveFromRolesAsync(row.User, currentRoles);
+            await UserManager.AddToRoleAsync(row.User, row.Role);
+        }
+
+        await ReloadAsync();
+    }
+
+    private async Task CreateUserAsync()
+    {
+        errorMessage = null;
+        if (string.IsNullOrWhiteSpace(newEmail) || string.IsNullOrWhiteSpace(newDisplayName))
+        {
+            errorMessage = "請輸入姓名與帳號 (Email)。";
+            return;
+        }
+
+        var user = new ApplicationUser
+        {
+            UserName = newEmail.Trim(),
+            Email = newEmail.Trim(),
+            EmailConfirmed = true,
+            DisplayName = newDisplayName.Trim(),
+            IsActive = true
+        };
+
+        var result = await UserManager.CreateAsync(user, newPassword);
+        if (!result.Succeeded)
+        {
+            errorMessage = string.Join("; ", result.Errors.Select(e => e.Description));
+            return;
+        }
+
+        await UserManager.AddToRoleAsync(user, newRole);
+
+        newDisplayName = "";
+        newEmail = "";
+        newPassword = "Pass#12345";
+        newRole = RoleNames.Member;
+
+        await ReloadAsync();
+    }
+
+    private class UserRow
+    {
+        public ApplicationUser User { get; set; } = default!;
+        public string DepartmentId { get; set; } = "";
+        public string Role { get; set; } = RoleNames.Viewer;
+    }
+}

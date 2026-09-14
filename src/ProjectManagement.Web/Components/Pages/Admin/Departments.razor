@@ -1,0 +1,60 @@
+@page "/admin/departments"
+@attribute [Authorize(Roles = "Admin")]
+@rendermode InteractiveServer
+@using Microsoft.EntityFrameworkCore
+@using ProjectManagement.Web.Data
+@using ProjectManagement.Web.Models
+@inject ApplicationDbContext Db
+
+<PageTitle>單位維護</PageTitle>
+
+<h1>單位維護</h1>
+
+<table class="table">
+    <thead><tr><th>名稱</th><th>啟用</th><th></th></tr></thead>
+    <tbody>
+        @foreach (var d in departments)
+        {
+            <tr>
+                <td><input class="form-control" @bind="d.Name" /></td>
+                <td><input type="checkbox" @bind="d.IsActive" /></td>
+                <td><button class="btn btn-sm btn-primary" @onclick="() => SaveAsync(d)">儲存</button></td>
+            </tr>
+        }
+    </tbody>
+</table>
+
+<div class="card"><div class="card-body">
+    <h6>新增單位</h6>
+    <div class="input-group">
+        <input class="form-control" placeholder="單位名稱" @bind="newName" />
+        <button class="btn btn-primary" @onclick="AddAsync">新增</button>
+    </div>
+</div></div>
+
+@code {
+    private List<Department> departments = [];
+    private string newName = "";
+
+    protected override async Task OnInitializedAsync() => await ReloadAsync();
+
+    private async Task ReloadAsync()
+    {
+        departments = await Db.Departments.OrderBy(d => d.Name).ToListAsync();
+    }
+
+    private async Task SaveAsync(Department d)
+    {
+        Db.Departments.Update(d);
+        await Db.SaveChangesAsync();
+    }
+
+    private async Task AddAsync()
+    {
+        if (string.IsNullOrWhiteSpace(newName)) return;
+        Db.Departments.Add(new Department { Name = newName.Trim() });
+        await Db.SaveChangesAsync();
+        newName = "";
+        await ReloadAsync();
+    }
+}

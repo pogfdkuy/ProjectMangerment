@@ -1,0 +1,125 @@
+@page "/reports/gantt"
+@attribute [Authorize(Roles = "Admin,Manager")]
+@rendermode InteractiveServer
+@using ProjectManagement.Web.Services
+@inject IReportService ReportService
+
+<PageTitle>未結案甘特圖</PageTitle>
+
+<h1>未結案甘特圖</h1>
+<p class="text-muted">
+    尚未結案（狀態非「已完成」）、且已填預計開始或結束時間的專案與一般需求。紅色直線代表今天。
+    <span class="badge gantt-bar-primary" style="color:#fff">進行中</span>
+    <span class="badge gantt-bar-secondary" style="color:#fff">未開始</span>
+    <span class="badge gantt-bar-warning" style="color:#fff">暫停／擱置</span>
+    <span class="badge gantt-bar-danger" style="color:#fff">已逾期</span>
+</p>
+
+@if (items is null)
+{
+    <p><em>載入中…</em></p>
+}
+else if (items.Count == 0)
+{
+    <p class="text-muted">目前沒有未結案、且已填預計時間的專案或需求。</p>
+}
+else
+{
+    <div class="mb-4" style="overflow-x:auto">
+        <div style="min-width:900px">
+            <div class="gantt-header">
+                <div class="gantt-header-label"></div>
+                <div class="gantt-header-track">
+                    @foreach (var m in monthHeaders)
+                    {
+                        <div class="gantt-month" style="width:@(m.WidthPercent.ToString(System.Globalization.CultureInfo.InvariantCulture))%; flex:none">@m.Label</div>
+                    }
+                </div>
+            </div>
+            @foreach (var item in items)
+            {
+                var pos = BarPosition(item);
+                <div class="gantt-row">
+                    <div class="gantt-label">
+                        <a class="gantt-label-title" href="@item.Url">@item.Title</a>
+                        <div class="gantt-label-meta">@item.Type・@item.StatusText・@(item.Owner ?? "未指派")</div>
+                    </div>
+                    <div class="gantt-track">
+                        @if (todayPercent is >= 0 and <= 100)
+                        {
+                            <div class="gantt-today-line" style="left:@(todayPercent.ToString(System.Globalization.CultureInfo.InvariantCulture))%"></div>
+                        }
+                        <a class="gantt-bar @item.ColorClass"
+                           style="left:@(pos.Left.ToString(System.Globalization.CultureInfo.InvariantCulture))%; width:@(pos.Width.ToString(System.Globalization.CultureInfo.InvariantCulture))%"
+                           href="@item.Url"
+                           title="@item.Title（@FormatDate(item.PlannedStartDate) ～ @FormatDate(item.PlannedEndDate)）">
+                            @item.StatusText・@item.ProgressPercent%
+                        </a>
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    private List<GanttItem>? items;
+    private DateTime windowStart;
+    private DateTime windowEnd;
+    private List<(string Label, double WidthPercent)> monthHeaders = [];
+    private double todayPercent;
+
+    private double TotalDays => Math.Max((windowEnd - windowStart).TotalDays, 1);
+
+    protected override async Task OnInitializedAsync()
+    {
+        items = await ReportService.GetOpenItemsForGanttAsync();
+        var today = DateTime.Today;
+
+        var starts = items
+            .Select(i => i.PlannedStartDate ?? i.PlannedEndDate)
+            .Where(d => d.HasValue)
+            .Select(d => d!.Value)
+            .ToList();
+        var ends = items
+            .Select(i => i.PlannedEndDate ?? i.PlannedStartDate)
+            .Where(d => d.HasValue)
+            .Select(d => d!.Value)
+            .ToList();
+
+        // 視窗至少含「今天」前一個月～後三個月，確保就算項目時間都很集中，軸線還是有合理的上下文。
+        var minDate = starts.Count > 0 ? starts.Min() : today;
+        var maxDate = ends.Count > 0 ? ends.Max() : today;
+        minDate = new[] { minDate, today.AddMonths(-1) }.Min();
+        maxDate = new[] { maxDate, today.AddMonths(3) }.Max();
+
+        windowStart = new DateTime(minDate.Year, minDate.Month, 1);
+        windowEnd = new DateTime(maxDate.Year, maxDate.Month, 1).AddMonths(1);
+
+        monthHeaders = [];
+        var cursor = windowStart;
+        while (cursor < windowEnd)
+        {
+            var nextMonth = cursor.AddMonths(1);
+            var days = (nextMonth - cursor).TotalDays;
+            monthHeaders.Add(($"{cursor.Year}/{cursor.Month:00}", days / TotalDays * 100));
+            cursor = nextMonth;
+        }
+
+        todayPercent = Math.Clamp((today - windowStart).TotalDays / TotalDays * 100, 0, 100);
+    }
+
+    private (double Left, double Width) BarPosition(GanttItem item)
+    {
+        var start = item.PlannedStartDate ?? item.PlannedEndDate ?? windowStart;
+        var end = item.PlannedEndDate ?? item.PlannedStartDate ?? start;
+        if (end < start) end = start;
+
+        var left = Math.Clamp((start - windowStart).TotalDays / TotalDays * 100, 0, 100);
+        var width = Math.Max((end - start).TotalDays / TotalDays * 100, 1.5);
+        if (left + width > 100) width = 100 - left;
+        return (left, width);
+    }
+
+    private static string FormatDate(DateTime? date) => date?.ToString("yyyy-MM-dd") ?? "—";
+}

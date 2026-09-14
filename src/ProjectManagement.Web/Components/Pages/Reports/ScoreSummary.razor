@@ -1,0 +1,257 @@
+@page "/reports/scores"
+@attribute [Authorize(Roles = "Admin,Manager")]
+@rendermode InteractiveServer
+@using ProjectManagement.Web.Models
+@using ProjectManagement.Web.Services
+@inject IProjectService ProjectService
+@inject IRequirementService RequirementService
+
+<PageTitle>效益分數統計</PageTitle>
+
+<h1>效益分數統計</h1>
+<p class="text-muted">
+    彙整專案與一般需求的效益分數（困難度降低 + 效益性，見詳情頁的「效益分數評估」）。
+    用途是排優先順序、看每個人的績效分佈，不是正式的績效考核制度。
+</p>
+
+@if (allRows is null)
+{
+    <p><em>載入中…</em></p>
+}
+else
+{
+    <div class="row g-2 mb-4 align-items-end">
+        <div class="col-auto">
+            <label class="form-label mb-0 small">起始日期（依建立時間）</label>
+            <input type="date" class="form-control" @bind="filterStartDate" @bind:after="ApplyFilters" />
+        </div>
+        <div class="col-auto">
+            <label class="form-label mb-0 small">結束日期</label>
+            <input type="date" class="form-control" @bind="filterEndDate" @bind:after="ApplyFilters" />
+        </div>
+        <div class="col-auto">
+            <label class="form-label mb-0 small">完成狀態</label>
+            <select class="form-select" @bind="completionFilter" @bind:after="ApplyFilters">
+                <option value="all">全部</option>
+                <option value="completed">已完成</option>
+                <option value="active">未完成（含進行中）</option>
+            </select>
+        </div>
+        @if (filterStartDate is not null || filterEndDate is not null || completionFilter != "all")
+        {
+            <div class="col-auto">
+                <button class="btn btn-outline-secondary" @onclick="ResetFilters">清除篩選</button>
+            </div>
+        }
+    </div>
+
+    <h4>完成度分布<span class="text-muted small">（依上方日期區間；不受「完成狀態」篩選影響，方便對照）</span></h4>
+    <div class="mb-4" style="max-width:640px">
+        <div class="mb-2">
+            <div class="d-flex justify-content-between small mb-1">
+                <span>專案</span>
+                <span>已完成 @projectCompletedCount／未完成 @projectActiveCount</span>
+            </div>
+            @if (projectCompletedCount + projectActiveCount == 0)
+            {
+                <div class="progress" style="height:22px"></div>
+            }
+            else
+            {
+                <div class="progress" style="height:22px">
+                    <div class="progress-bar bg-success" style="width:@(projectCompletedCount * 100.0 / (projectCompletedCount + projectActiveCount))%">@(projectCompletedCount > 0 ? projectCompletedCount.ToString() : "")</div>
+                    <div class="progress-bar bg-secondary" style="width:@(projectActiveCount * 100.0 / (projectCompletedCount + projectActiveCount))%">@(projectActiveCount > 0 ? projectActiveCount.ToString() : "")</div>
+                </div>
+            }
+        </div>
+        <div class="mb-2">
+            <div class="d-flex justify-content-between small mb-1">
+                <span>一般需求</span>
+                <span>已完成 @requirementCompletedCount／未完成 @requirementActiveCount</span>
+            </div>
+            @if (requirementCompletedCount + requirementActiveCount == 0)
+            {
+                <div class="progress" style="height:22px"></div>
+            }
+            else
+            {
+                <div class="progress" style="height:22px">
+                    <div class="progress-bar bg-success" style="width:@(requirementCompletedCount * 100.0 / (requirementCompletedCount + requirementActiveCount))%">@(requirementCompletedCount > 0 ? requirementCompletedCount.ToString() : "")</div>
+                    <div class="progress-bar bg-secondary" style="width:@(requirementActiveCount * 100.0 / (requirementCompletedCount + requirementActiveCount))%">@(requirementActiveCount > 0 ? requirementActiveCount.ToString() : "")</div>
+                </div>
+            }
+        </div>
+        <div class="small text-muted">
+            <span class="badge bg-success">&nbsp;</span> 已完成
+            &nbsp;&nbsp;<span class="badge bg-secondary">&nbsp;</span> 未完成（含進行中／未開始／暫停）
+        </div>
+    </div>
+
+    <h4>依負責人彙整分數</h4>
+    @if (byOwner.Count == 0)
+    {
+        <p class="text-muted">目前沒有符合篩選條件的資料。</p>
+    }
+    else
+    {
+        <div class="mb-5" style="max-width:720px">
+            @foreach (var g in byOwner)
+            {
+                <div class="mb-2">
+                    <div class="d-flex justify-content-between small mb-1">
+                        <span>@g.Owner（專案 @g.ProjectCount・需求 @g.RequirementCount）</span>
+                        <span><strong>@g.TotalScore</strong> 分</span>
+                    </div>
+                    <div class="progress" style="height:18px">
+                        <div class="progress-bar bg-primary" style="width:@(maxOwnerScore > 0 ? g.TotalScore * 100.0 / maxOwnerScore : 0)%"></div>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+
+    <h4>依分數排序（高到低）</h4>
+    @if (filteredRows.Count == 0)
+    {
+        <p class="text-muted">目前沒有符合篩選條件的專案或需求。</p>
+    }
+    else
+    {
+        <table class="table table-hover align-middle">
+            <thead>
+                <tr>
+                    <th>類型</th>
+                    <th>名稱</th>
+                    <th>負責人</th>
+                    <th>完成狀態</th>
+                    <th>困難度（前→後）</th>
+                    <th>困難度降低分數</th>
+                    <th>效益性</th>
+                    <th>總分</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var row in filteredRows)
+                {
+                    <tr style="cursor:pointer" @onclick="() => Nav.NavigateTo(row.Url)">
+                        <td><span class="badge @(row.Type == "專案" ? "text-bg-primary" : "text-bg-info")">@row.Type</span></td>
+                        <td>@row.Title</td>
+                        <td>@row.Owner</td>
+                        <td><span class="badge @(row.IsCompleted ? "bg-success" : "bg-secondary")">@(row.IsCompleted ? "已完成" : "未完成")</span></td>
+                        <td>@(row.DifficultyBefore?.ToString() ?? "—") → @(row.DifficultyAfter?.ToString() ?? "—")</td>
+                        <td>@row.DifficultyReductionScore</td>
+                        <td>@row.BenefitScore</td>
+                        <td><strong>@row.TotalScore</strong></td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+}
+
+@code {
+    [Inject] private NavigationManager Nav { get; set; } = default!;
+
+    private List<ScoreRow>? allRows;
+    private List<ScoreRow> dateFilteredRows = [];
+    private List<ScoreRow> filteredRows = [];
+    private List<OwnerSummary> byOwner = [];
+    private int maxOwnerScore;
+
+    private int projectCompletedCount;
+    private int projectActiveCount;
+    private int requirementCompletedCount;
+    private int requirementActiveCount;
+
+    private DateTime? filterStartDate;
+    private DateTime? filterEndDate;
+    private string completionFilter = "all";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var projects = await ProjectService.GetListAsync();
+        var requirements = await RequirementService.GetListAsync();
+
+        var projectRows = projects.Select(p => new ScoreRow(
+            "專案",
+            p.Name,
+            p.ResponsibleDisplayName ?? "未指派",
+            p.Status == ProjectStatus.Completed || p.CompletionPercent >= 100,
+            p.CreatedAt,
+            p.DifficultyBefore,
+            p.DifficultyAfter,
+            p.DifficultyReductionScore,
+            p.BenefitScore,
+            p.TotalScore,
+            $"/projects/{p.Id}"));
+
+        var requirementRows = requirements.Select(r => new ScoreRow(
+            "需求",
+            r.Title,
+            r.ResponsibleDisplayName ?? "未指派",
+            r.Status == RequirementStatus.Completed,
+            r.CreatedAt,
+            r.DifficultyBefore,
+            r.DifficultyAfter,
+            r.DifficultyReductionScore,
+            r.BenefitScore,
+            r.TotalScore,
+            $"/requirements/{r.Id}"));
+
+        allRows = projectRows.Concat(requirementRows).ToList();
+
+        ApplyFilters();
+    }
+
+    /// <summary>
+    /// 日期區間篩選（依建立時間）先套用，「完成度分布」圖表固定用這個結果，不受「完成狀態」下拉選單影響，
+    /// 方便同時看到已完成/未完成的比例；下方的負責人彙整與明細表格則會再套用「完成狀態」篩選。
+    /// </summary>
+    private void ApplyFilters()
+    {
+        if (allRows is null) return;
+
+        dateFilteredRows = allRows.Where(r =>
+            (filterStartDate is null || r.CreatedAt.Date >= filterStartDate.Value.Date) &&
+            (filterEndDate is null || r.CreatedAt.Date <= filterEndDate.Value.Date)
+        ).ToList();
+
+        projectCompletedCount = dateFilteredRows.Count(r => r.Type == "專案" && r.IsCompleted);
+        projectActiveCount = dateFilteredRows.Count(r => r.Type == "專案" && !r.IsCompleted);
+        requirementCompletedCount = dateFilteredRows.Count(r => r.Type == "需求" && r.IsCompleted);
+        requirementActiveCount = dateFilteredRows.Count(r => r.Type == "需求" && !r.IsCompleted);
+
+        filteredRows = completionFilter switch
+        {
+            "completed" => dateFilteredRows.Where(r => r.IsCompleted).ToList(),
+            "active" => dateFilteredRows.Where(r => !r.IsCompleted).ToList(),
+            _ => dateFilteredRows
+        };
+        filteredRows = filteredRows.OrderByDescending(r => r.TotalScore).ToList();
+
+        byOwner = filteredRows
+            .Where(r => r.Owner != "未指派")
+            .GroupBy(r => r.Owner)
+            .Select(g => new OwnerSummary(
+                g.Key,
+                g.Count(r => r.Type == "專案"),
+                g.Count(r => r.Type == "需求"),
+                g.Sum(r => r.TotalScore)))
+            .OrderByDescending(g => g.TotalScore)
+            .ToList();
+
+        maxOwnerScore = byOwner.Count > 0 ? byOwner.Max(g => g.TotalScore) : 0;
+    }
+
+    private void ResetFilters()
+    {
+        filterStartDate = null;
+        filterEndDate = null;
+        completionFilter = "all";
+        ApplyFilters();
+    }
+
+    private record ScoreRow(string Type, string Title, string Owner, bool IsCompleted, DateTime CreatedAt, int? DifficultyBefore, int? DifficultyAfter, int DifficultyReductionScore, int BenefitScore, int TotalScore, string Url);
+
+    private record OwnerSummary(string Owner, int ProjectCount, int RequirementCount, int TotalScore);
+}

@@ -1,0 +1,167 @@
+@page "/reports/weekly"
+@attribute [Authorize(Roles = "Admin,Manager")]
+@rendermode InteractiveServer
+@using ProjectManagement.Web.Models
+@using ProjectManagement.Web.Services
+@inject IReportService ReportService
+
+<PageTitle>本週工作總覽</PageTitle>
+
+<h1>本週工作總覽</h1>
+<p class="text-muted">本週（週一～週日）預計要完成的工作項目，以及上週實際完成／更新的內容。</p>
+
+@if (result is null)
+{
+    <p><em>載入中…</em></p>
+}
+else
+{
+    <div class="row g-2 mb-3 align-items-end">
+        <div class="col-auto">
+            <label class="form-label mb-0 small">負責人</label>
+            <select class="form-select" @bind="selectedOwner">
+                <option value="">全部</option>
+                @foreach (var owner in owners)
+                {
+                    <option value="@owner">@owner</option>
+                }
+            </select>
+        </div>
+    </div>
+
+    <div class="d-flex justify-content-between align-items-center mb-2">
+        <h4 class="mb-0">本週預計完成（@result.WeekStart.ToString("MM/dd") ～ @result.WeekEnd.ToString("MM/dd")）</h4>
+        <span class="text-muted small">共 @FilteredDue.Count 項</span>
+    </div>
+    @if (FilteredDue.Count == 0)
+    {
+        <p class="text-muted">本週沒有預計到期、尚未完成的工作項目。</p>
+    }
+    else
+    {
+        <table class="table table-hover align-middle mb-4">
+            <thead><tr><th>類型</th><th>項目</th><th>負責人</th><th>預計完成日</th><th></th></tr></thead>
+            <tbody>
+                @foreach (var item in FilteredDue)
+                {
+                    <tr style="cursor:pointer" @onclick="() => Nav.NavigateTo(item.Url)">
+                        <td><span class="badge @(item.Type == "專案子項目" ? "text-bg-primary" : "text-bg-info")">@item.Type</span></td>
+                        <td>@item.Title</td>
+                        <td>@(item.Owner ?? "未指派")</td>
+                        <td>@item.PlannedEndDate?.ToString("yyyy-MM-dd")</td>
+                        <td>
+                            @if (item.IsOverdue)
+                            {
+                                <span class="badge bg-danger">已逾期</span>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+
+    <div class="d-flex justify-content-between align-items-center mb-2">
+        <h4 class="mb-0">上週完成的專案子項目（@result.LastWeekStart.ToString("MM/dd") ～ @result.LastWeekEnd.ToString("MM/dd")）</h4>
+        <span class="text-muted small">共 @FilteredCompletedSubTasks.Count 項</span>
+    </div>
+    @if (FilteredCompletedSubTasks.Count == 0)
+    {
+        <p class="text-muted">上週沒有完成的專案子工作項目。</p>
+    }
+    else
+    {
+        <table class="table table-hover align-middle mb-4">
+            <thead><tr><th>專案</th><th>負責人</th><th>子工作項目</th><th>預估時數</th><th>完成時間</th></tr></thead>
+            <tbody>
+                @foreach (var item in FilteredCompletedSubTasks)
+                {
+                    <tr style="cursor:pointer" @onclick="() => Nav.NavigateTo(item.Url)">
+                        <td>@item.ProjectName</td>
+                        <td>@(item.Owner ?? "未指派")</td>
+                        <td>@item.SubTaskName</td>
+                        <td>@item.EstimatedHours 小時</td>
+                        <td>@item.CompletedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+
+    <div class="d-flex justify-content-between align-items-center mb-2">
+        <h4 class="mb-0">上週一般需求進度更新</h4>
+        <span class="text-muted small">共 @FilteredRequirementUpdates.Count 筆</span>
+    </div>
+    @if (FilteredRequirementUpdates.Count == 0)
+    {
+        <p class="text-muted">上週沒有一般需求的進度更新紀錄。</p>
+    }
+    else
+    {
+        <table class="table table-hover align-middle mb-4">
+            <thead><tr><th>需求</th><th>負責人</th><th>進度</th><th>狀態</th><th>備註</th><th>更新者</th><th>更新時間</th></tr></thead>
+            <tbody>
+                @foreach (var item in FilteredRequirementUpdates)
+                {
+                    <tr style="cursor:pointer" @onclick="() => Nav.NavigateTo(item.Url)">
+                        <td>@item.Title</td>
+                        <td>@(item.Owner ?? "未指派")</td>
+                        <td>@item.OldProgressPercent% → @item.NewProgressPercent%</td>
+                        <td>@(item.OldStatus is null ? "—" : StatusText(item.OldStatus.Value)) → @(item.NewStatus is null ? "—" : StatusText(item.NewStatus.Value))</td>
+                        <td class="small text-muted">@item.Note</td>
+                        <td>@(item.ChangedByName ?? "—")</td>
+                        <td>@item.ChangedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+}
+
+@code {
+    [Inject] private NavigationManager Nav { get; set; } = default!;
+
+    private WeeklyOverviewResult? result;
+    private List<string> owners = [];
+    private string selectedOwner = "";
+
+    private List<DueSoonItem> FilteredDue =>
+        string.IsNullOrEmpty(selectedOwner)
+            ? result?.DueThisWeek ?? []
+            : (result?.DueThisWeek ?? []).Where(i => i.Owner == selectedOwner).ToList();
+
+    private List<CompletedSubTaskItem> FilteredCompletedSubTasks =>
+        string.IsNullOrEmpty(selectedOwner)
+            ? result?.CompletedSubTasksLastWeek ?? []
+            : (result?.CompletedSubTasksLastWeek ?? []).Where(i => i.Owner == selectedOwner).ToList();
+
+    private List<RequirementUpdateItem> FilteredRequirementUpdates =>
+        string.IsNullOrEmpty(selectedOwner)
+            ? result?.RequirementUpdatesLastWeek ?? []
+            : (result?.RequirementUpdatesLastWeek ?? []).Where(i => i.Owner == selectedOwner).ToList();
+
+    protected override async Task OnInitializedAsync()
+    {
+        result = await ReportService.GetWeeklyOverviewAsync();
+
+        // 篩選清單的選項直接從這週的資料裡收集實際出現過的負責人（含手動輸入的姓名），
+        // 而不是查全部系統使用者：這樣「全部」以外的選項才不會列出一堆本週根本沒有工作項目的人。
+        owners = result.DueThisWeek.Select(i => i.Owner)
+            .Concat(result.CompletedSubTasksLastWeek.Select(i => i.Owner))
+            .Concat(result.RequirementUpdatesLastWeek.Select(i => i.Owner))
+            .Where(o => !string.IsNullOrWhiteSpace(o))
+            .Select(o => o!)
+            .Distinct()
+            .OrderBy(o => o)
+            .ToList();
+    }
+
+    private static string StatusText(RequirementStatus status) => status switch
+    {
+        RequirementStatus.NotStarted => "未開始",
+        RequirementStatus.InProgress => "進行中",
+        RequirementStatus.Completed => "已完成",
+        RequirementStatus.OnHold => "擱置",
+        _ => status.ToString()
+    };
+}

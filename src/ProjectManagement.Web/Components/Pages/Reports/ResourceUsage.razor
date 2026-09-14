@@ -1,0 +1,83 @@
+@page "/reports/resources"
+@attribute [Authorize(Roles = "Admin,Manager")]
+@rendermode InteractiveServer
+@using ProjectManagement.Web.Services
+@inject IReportService ReportService
+
+<PageTitle>資源耗用統計</PageTitle>
+
+<h1>資源耗用統計</h1>
+<p class="text-muted">以單位（部門）為角度，彙整專案子工作項目時數與一般需求評估工時的耗用情形。</p>
+
+@if (usage is null)
+{
+    <p><em>載入中…</em></p>
+}
+else if (usage.Count == 0)
+{
+    <p class="text-muted">目前沒有任何工時資料。</p>
+}
+else
+{
+    var maxTotal = usage.Max(d => d.GrandTotalHours);
+
+    <div class="mb-4" style="max-width:900px">
+        @foreach (var d in usage)
+        {
+            <div class="mb-3">
+                <div class="d-flex justify-content-between small mb-1">
+                    <span><strong>@d.DepartmentName</strong></span>
+                    <span>已完成 @d.GrandCompletedHours 小時 ／ 總計 @d.GrandTotalHours 小時</span>
+                </div>
+                @if (d.GrandTotalHours <= 0)
+                {
+                    <div class="progress" style="height:20px"></div>
+                }
+                else
+                {
+                    <div class="progress" style="height:20px">
+                        <div class="progress-bar bg-success" style="width:@(d.GrandCompletedHours * 100m / maxTotal)%" title="已完成"></div>
+                        <div class="progress-bar bg-secondary" style="width:@((d.GrandTotalHours - d.GrandCompletedHours) * 100m / maxTotal)%" title="未完成"></div>
+                    </div>
+                }
+            </div>
+        }
+        <div class="small text-muted">
+            <span class="badge bg-success">&nbsp;</span> 已完成工時
+            &nbsp;&nbsp;<span class="badge bg-secondary">&nbsp;</span> 未完成工時
+            &nbsp;&nbsp;（長條寬度以所有單位中總工時最高者為基準）
+        </div>
+    </div>
+
+    <h4>明細</h4>
+    <table class="table align-middle">
+        <thead>
+            <tr>
+                <th>單位</th>
+                <th>專案子工作項目工時（已完成／總計）</th>
+                <th>一般需求評估工時（已完成／總計）</th>
+                <th>合計（已完成／總計）</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var d in usage)
+            {
+                <tr>
+                    <td>@d.DepartmentName</td>
+                    <td>@d.ProjectCompletedHours ／ @d.ProjectTotalHours 小時</td>
+                    <td>@d.RequirementCompletedHours ／ @d.RequirementTotalHours 小時</td>
+                    <td><strong>@d.GrandCompletedHours ／ @d.GrandTotalHours 小時</strong></td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private List<DepartmentResourceUsage>? usage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        usage = await ReportService.GetResourceUsageByDepartmentAsync();
+    }
+}
