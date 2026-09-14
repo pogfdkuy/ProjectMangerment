@@ -57,6 +57,28 @@ public record CalendarItem(
     string ColorClass,
     string Url);
 
+/// <summary>效益分數統計（/reports/scores）用的一筆資料，專案或一般需求都會轉成這個共用格式。</summary>
+public record ScoreRow(
+    string Type,
+    string Title,
+    string Owner,
+    bool IsCompleted,
+    DateTime CreatedAt,
+    int? DifficultyBefore,
+    string? DifficultyBeforeNote,
+    int? DifficultyAfter,
+    string? DifficultyAfterNote,
+    bool HasPrimaryBenefit,
+    string? HasPrimaryBenefitNote,
+    bool HasLongTermBenefit,
+    string? HasLongTermBenefitNote,
+    bool HasCrossUnitBenefit,
+    string? HasCrossUnitBenefitNote,
+    int DifficultyReductionScore,
+    int BenefitScore,
+    int TotalScore,
+    string Url);
+
 public interface IReportService
 {
     /// <summary>當週（週一～週日）預計要完成的工作項目，以及上週實際完成／更新的內容。</summary>
@@ -70,4 +92,7 @@ public interface IReportService
 
     /// <summary>某年某月的行事曆標記：每個專案／需求的到期日，以及該月內實際完成的日期。</summary>
     Task<List<CalendarItem>> GetCalendarItemsAsync(int year, int month);
+
+    /// <summary>效益分數統計頁（/reports/scores）用：所有專案與一般需求轉成統一的 ScoreRow 清單。</summary>
+    Task<List<ScoreRow>> GetScoreRowsAsync();
 }

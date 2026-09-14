@@ -22,6 +22,14 @@ public class GeneralRequirement
     [StringLength(2000)]
     public string? Remarks { get; set; }
 
+    /// <summary>系統名稱（這個需求對應到的系統，跟「系統類別」不同，是自由輸入的名稱）。</summary>
+    [StringLength(200)]
+    public string? SystemName { get; set; }
+
+    /// <summary>申請單號（需求者可能習慣先在 GP 系統填程式開發修改單，這裡記錄對應的單號）。</summary>
+    [StringLength(100)]
+    public string? ApplicationTicketNumber { get; set; }
+
     public int? DepartmentId { get; set; }
     public Department? Department { get; set; }
 
@@ -83,17 +91,37 @@ public class GeneralRequirement
     /// <summary>工作困難度：做之前是多少，1~5，見 <see cref="ScoreCalculator.DifficultyLevels"/>。未評估時為 null。</summary>
     public int? DifficultyBefore { get; set; }
 
+    /// <summary>工作困難度：做之前的文字說明（例如實際狀況描述）。</summary>
+    [StringLength(500)]
+    public string? DifficultyBeforeNote { get; set; }
+
     /// <summary>工作困難度：做之後（預估）是多少，1~5。未評估時為 null。</summary>
     public int? DifficultyAfter { get; set; }
+
+    /// <summary>工作困難度：做之後（預估）的文字說明。</summary>
+    [StringLength(500)]
+    public string? DifficultyAfterNote { get; set; }
 
     /// <summary>效益性子條件：主要性（節省金額達每月10萬）。</summary>
     public bool HasPrimaryBenefit { get; set; }
 
+    /// <summary>效益性子條件：主要性的文字說明（例如實際一個月可以節省多少）。</summary>
+    [StringLength(500)]
+    public string? HasPrimaryBenefitNote { get; set; }
+
     /// <summary>效益性子條件：長期性（屢屢對策失效）。</summary>
     public bool HasLongTermBenefit { get; set; }
 
+    /// <summary>效益性子條件：長期性的文字說明。</summary>
+    [StringLength(500)]
+    public string? HasLongTermBenefitNote { get; set; }
+
     /// <summary>效益性子條件：綜合性（跨2個單位以上的問題）。</summary>
     public bool HasCrossUnitBenefit { get; set; }
+
+    /// <summary>效益性子條件：綜合性的文字說明（例如是跨哪些單位）。</summary>
+    [StringLength(500)]
+    public string? HasCrossUnitBenefitNote { get; set; }
 
     /// <summary>困難度降低分數 = 做之前 - 做之後（預估），最低 0 分。</summary>
     [NotMapped]

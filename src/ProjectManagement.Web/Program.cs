@@ -74,6 +74,9 @@ builder.Services.AddAuthorization(options =>
 
 builder.Services.AddSingleton<IEmailSender<ApplicationUser>, IdentityNoOpEmailSender>();
 
+// 一般用途的寄信服務（例如建立帳號後寄送預設密碼），跟上面 Identity 內建流程用的 IdentityNoOpEmailSender 是分開的兩件事。
+builder.Services.AddScoped<IAppEmailSender, SmtpEmailSender>();
+
 // 業務邏輯服務
 builder.Services.AddScoped<INotificationService, NotificationService>();
 builder.Services.AddScoped<IAttachmentService, AttachmentService>();
@@ -138,5 +141,71 @@ app.MapGet("/attachments/{id:int}/view", async (int id, IAttachmentService attac
 
     return Results.File(path, attachment.ContentType);
 }).RequireAuthorization();
+
+// 效益分數統計匯出 Excel：跟 /reports/scores 畫面用同一份 ReportService.GetScoreRowsAsync() 資料來源，
+// 並套用相同的三個篩選條件（start／end／completion），確保匯出的內容跟畫面上看到的一致。
+app.MapGet("/reports/scores/export", async (IReportService reportService, DateTime? start, DateTime? end, string? completion) =>
+{
+    var rows = await reportService.GetScoreRowsAsync();
+
+    if (start is not null) rows = rows.Where(r => r.CreatedAt.Date >= start.Value.Date).ToList();
+    if (end is not null) rows = rows.Where(r => r.CreatedAt.Date <= end.Value.Date).ToList();
+    rows = completion switch
+    {
+        "completed" => rows.Where(r => r.IsCompleted).ToList(),
+        "active" => rows.Where(r => !r.IsCompleted).ToList(),
+        _ => rows
+    };
+
+    using var workbook = new ClosedXML.Excel.XLWorkbook();
+    var sheet = workbook.Worksheets.Add("效益分數統計");
+
+    string[] headers =
+    [
+        "類型", "名稱", "負責人", "完成狀態", "建立時間",
+        "困難度(前)", "困難度(前)說明", "困難度(後)", "困難度(後)說明",
+        "主要性", "主要性說明", "長期性", "長期性說明", "綜合性", "綜合性說明",
+        "困難度降低分數", "效益性分數", "總分"
+    ];
+    for (var i = 0; i < headers.Length; i++)
+    {
+        sheet.Cell(1, i + 1).Value = headers[i];
+        sheet.Cell(1, i + 1).Style.Font.Bold = true;
+    }
+
+    var row = 2;
+    foreach (var r in rows)
+    {
+        var col = 1;
+        sheet.Cell(row, col++).Value = r.Type;
+        sheet.Cell(row, col++).Value = r.Title;
+        sheet.Cell(row, col++).Value = r.Owner;
+        sheet.Cell(row, col++).Value = r.IsCompleted ? "已完成" : "未完成";
+        sheet.Cell(row, col++).Value = r.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm");
+        sheet.Cell(row, col++).Value = r.DifficultyBefore?.ToString() ?? "";
+        sheet.Cell(row, col++).Value = r.DifficultyBeforeNote ?? "";
+        sheet.Cell(row, col++).Value = r.DifficultyAfter?.ToString() ?? "";
+        sheet.Cell(row, col++).Value = r.DifficultyAfterNote ?? "";
+        sheet.Cell(row, col++).Value = r.HasPrimaryBenefit ? "是" : "否";
+        sheet.Cell(row, col++).Value = r.HasPrimaryBenefitNote ?? "";
+        sheet.Cell(row, col++).Value = r.HasLongTermBenefit ? "是" : "否";
+        sheet.Cell(row, col++).Value = r.HasLongTermBenefitNote ?? "";
+        sheet.Cell(row, col++).Value = r.HasCrossUnitBenefit ? "是" : "否";
+        sheet.Cell(row, col++).Value = r.HasCrossUnitBenefitNote ?? "";
+        sheet.Cell(row, col++).Value = r.DifficultyReductionScore;
+        sheet.Cell(row, col++).Value = r.BenefitScore;
+        sheet.Cell(row, col++).Value = r.TotalScore;
+        row++;
+    }
+
+    sheet.Columns().AdjustToContents();
+
+    using var stream = new MemoryStream();
+    workbook.SaveAs(stream);
+    var bytes = stream.ToArray();
+
+    var fileName = $"效益分數統計_{DateTime.Now:yyyyMMdd_HHmm}.xlsx";
+    return Results.File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fileName);
+}).RequireAuthorization(policy => policy.RequireRole(RoleNames.Admin, RoleNames.Manager));
 
 app.Run();

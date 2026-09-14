@@ -33,6 +33,8 @@ else
             <p class="mb-0">
                 單位：@(requirement.Department?.Name ?? "—")
                 系統類別：@(requirement.SystemCategory?.Name ?? "—")
+                系統名稱：@(requirement.SystemName ?? "—")
+                申請單號：@(requirement.ApplicationTicketNumber ?? "—")
                 負責人：@(requirement.ResponsibleDisplayName ?? "未指派")
                 需求者：@(requirement.RequesterDisplayName ?? "—")
                 開發者：@(requirement.DeveloperDisplayName ?? "—")
@@ -172,29 +174,44 @@ else
                         <InputNumber class="form-control" @bind-Value="editModel.EstimatedHours" placeholder="小時" />
                     </div>
                 </div>
+                <div class="row">
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">系統名稱</label>
+                        <InputText class="form-control" @bind-Value="editModel.SystemName" />
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">申請單號</label>
+                        <div class="input-group">
+                            <InputText class="form-control" @bind-Value="editModel.ApplicationTicketNumber" placeholder="GP 程式開發修改單號" />
+                            <button class="btn btn-outline-secondary" type="button">讀取GP單</button>
+                        </div>
+                    </div>
+                </div>
 
                 <hr />
                 <h6>效益分數評估<span class="text-muted small">（用來排優先順序、統計績效，非正式KPI考核）</span></h6>
                 <div class="row">
                     <div class="col-md-3 mb-3">
                         <label class="form-label">工作困難度（做之前）</label>
-                        <InputSelect class="form-select" @bind-Value="editModel.DifficultyBefore">
+                        <InputSelect class="form-select mb-1" @bind-Value="editModel.DifficultyBefore">
                             <option value="">（未評估）</option>
                             @foreach (var (level, description) in ScoreCalculator.DifficultyLevels)
                             {
                                 <option value="@level">@description</option>
                             }
                         </InputSelect>
+                        <InputText class="form-control form-control-sm" @bind-Value="editModel.DifficultyBeforeNote" placeholder="文字說明（選填）" />
                     </div>
                     <div class="col-md-3 mb-3">
                         <label class="form-label">工作困難度（做之後，預估）</label>
-                        <InputSelect class="form-select" @bind-Value="editModel.DifficultyAfter">
+                        <InputSelect class="form-select mb-1" @bind-Value="editModel.DifficultyAfter">
                             <option value="">（未評估）</option>
                             @foreach (var (level, description) in ScoreCalculator.DifficultyLevels)
                             {
                                 <option value="@level">@description</option>
                             }
                         </InputSelect>
+                        <InputText class="form-control form-control-sm" @bind-Value="editModel.DifficultyAfterNote" placeholder="文字說明（選填）" />
                     </div>
                     <div class="col-md-6 mb-3">
                         <label class="form-label d-block">效益性（符合幾項對應分數：1項2分／2項5分／3項10分）</label>
@@ -202,14 +219,17 @@ else
                             <InputCheckbox class="form-check-input" id="reqBenefitPrimary" @bind-Value="editModel.HasPrimaryBenefit" />
                             <label class="form-check-label" for="reqBenefitPrimary">主要性（節省金額達每月10萬）</label>
                         </div>
+                        <InputText class="form-control form-control-sm mb-2" @bind-Value="editModel.HasPrimaryBenefitNote" placeholder="文字說明，例如實際一個月可以節省多少（選填）" />
                         <div class="form-check">
                             <InputCheckbox class="form-check-input" id="reqBenefitLongTerm" @bind-Value="editModel.HasLongTermBenefit" />
                             <label class="form-check-label" for="reqBenefitLongTerm">長期性（屢屢對策失效）</label>
                         </div>
+                        <InputText class="form-control form-control-sm mb-2" @bind-Value="editModel.HasLongTermBenefitNote" placeholder="文字說明（選填）" />
                         <div class="form-check">
                             <InputCheckbox class="form-check-input" id="reqBenefitCrossUnit" @bind-Value="editModel.HasCrossUnitBenefit" />
                             <label class="form-check-label" for="reqBenefitCrossUnit">綜合性（跨2個單位以上的問題）</label>
                         </div>
+                        <InputText class="form-control form-control-sm" @bind-Value="editModel.HasCrossUnitBenefitNote" placeholder="文字說明，例如是跨哪些單位（選填）" />
                     </div>
                 </div>
 
@@ -423,6 +443,8 @@ else
             Title = requirement.Title,
             Description = requirement.Description,
             Remarks = requirement.Remarks,
+            SystemName = requirement.SystemName,
+            ApplicationTicketNumber = requirement.ApplicationTicketNumber,
             DepartmentId = requirement.DepartmentId,
             SystemCategoryId = requirement.SystemCategoryId,
             ResponsibleUserId = requirement.ResponsibleUserId,
@@ -435,10 +457,15 @@ else
             PlannedStartDate = requirement.PlannedStartDate,
             PlannedEndDate = requirement.PlannedEndDate,
             DifficultyBefore = requirement.DifficultyBefore,
+            DifficultyBeforeNote = requirement.DifficultyBeforeNote,
             DifficultyAfter = requirement.DifficultyAfter,
+            DifficultyAfterNote = requirement.DifficultyAfterNote,
             HasPrimaryBenefit = requirement.HasPrimaryBenefit,
+            HasPrimaryBenefitNote = requirement.HasPrimaryBenefitNote,
             HasLongTermBenefit = requirement.HasLongTermBenefit,
-            HasCrossUnitBenefit = requirement.HasCrossUnitBenefit
+            HasLongTermBenefitNote = requirement.HasLongTermBenefitNote,
+            HasCrossUnitBenefit = requirement.HasCrossUnitBenefit,
+            HasCrossUnitBenefitNote = requirement.HasCrossUnitBenefitNote
         };
 
         progressModel = new ProgressUpdateModel

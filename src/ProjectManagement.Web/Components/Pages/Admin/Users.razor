@@ -5,8 +5,10 @@
 @using Microsoft.EntityFrameworkCore
 @using ProjectManagement.Web.Data
 @using ProjectManagement.Web.Models
+@using ProjectManagement.Web.Services
 @inject UserManager<ApplicationUser> UserManager
 @inject ApplicationDbContext Db
+@inject IAppEmailSender EmailSender
 
 <PageTitle>使用者與角色</PageTitle>
 
@@ -15,6 +17,10 @@
 @if (errorMessage is not null)
 {
     <div class="alert alert-danger">@errorMessage</div>
+}
+@if (infoMessage is not null)
+{
+    <div class="alert alert-success">@infoMessage</div>
 }
 
 <table class="table align-middle">
@@ -84,6 +90,7 @@
     private List<UserRow> userRows = [];
     private List<Department> departments = [];
     private string? errorMessage;
+    private string? infoMessage;
 
     private string newDisplayName = "";
     private string newEmail = "";
@@ -128,16 +135,32 @@
     private async Task CreateUserAsync()
     {
         errorMessage = null;
+        infoMessage = null;
+
         if (string.IsNullOrWhiteSpace(newEmail) || string.IsNullOrWhiteSpace(newDisplayName))
         {
             errorMessage = "請輸入姓名與帳號 (Email)。";
             return;
         }
 
+        var trimmedEmail = newEmail.Trim();
+
+        // 帳號固定要求是信箱格式（跟登入頁允許一般帳號名稱不同，這裡是「建立帳號」流程，
+        // 之後要能寄送密碼信件給對方，帳號本身就必須是合法的信箱地址）。
+        try
+        {
+            _ = new System.Net.Mail.MailAddress(trimmedEmail);
+        }
+        catch (FormatException)
+        {
+            errorMessage = "帳號必須是合法的信箱格式（例如 name@company.com）。";
+            return;
+        }
+
         var user = new ApplicationUser
         {
-            UserName = newEmail.Trim(),
-            Email = newEmail.Trim(),
+            UserName = trimmedEmail,
+            Email = trimmedEmail,
             EmailConfirmed = true,
             DisplayName = newDisplayName.Trim(),
             IsActive = true
@@ -151,6 +174,25 @@
         }
 
         await UserManager.AddToRoleAsync(user, newRole);
+
+        // 寄信失敗（例如 SMTP 還沒設定）不應該讓「建立帳號」這個操作整個失敗——帳號已經建立成功了，
+        // 只是通知信沒寄出去，用 infoMessage/errorMessage 分開顯示，讓管理者知道要自己口頭告知密碼。
+        try
+        {
+            var encodedName = System.Net.WebUtility.HtmlEncode(user.DisplayName);
+            var encodedEmail = System.Net.WebUtility.HtmlEncode(user.Email);
+            var encodedPassword = System.Net.WebUtility.HtmlEncode(newPassword);
+            var body = "<p>您好 " + encodedName + "，</p>"
+                + "<p>系統管理員已為您建立專案管理系統帳號：</p>"
+                + "<p>帳號：" + encodedEmail + "<br />初始密碼：" + encodedPassword + "</p>"
+                + "<p>請於首次登入後至帳戶設定自行修改密碼。</p>";
+            await EmailSender.SendEmailAsync(user.Email!, "您的專案管理系統帳號已建立", body);
+            infoMessage = $"帳號 {user.Email} 已建立，通知信已寄出。";
+        }
+        catch (Exception ex)
+        {
+            infoMessage = $"帳號 {user.Email} 已建立，但通知信寄送失敗（{ex.GetType().Name}: {ex.Message}），請自行告知對方帳號密碼。";
+        }
 
         newDisplayName = "";
         newEmail = "";

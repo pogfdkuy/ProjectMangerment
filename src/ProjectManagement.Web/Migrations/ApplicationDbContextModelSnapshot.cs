@@ -322,6 +322,10 @@ namespace ProjectManagement.Web.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
+                    b.Property<string>("ApplicationTicketNumber")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
@@ -342,8 +346,16 @@ namespace ProjectManagement.Web.Migrations
                     b.Property<int?>("DifficultyAfter")
                         .HasColumnType("int");
 
+                    b.Property<string>("DifficultyAfterNote")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
                     b.Property<int?>("DifficultyBefore")
                         .HasColumnType("int");
+
+                    b.Property<string>("DifficultyBeforeNote")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
 
                     b.Property<decimal?>("EstimatedHours")
                         .HasColumnType("decimal(10,2)");
@@ -351,11 +363,23 @@ namespace ProjectManagement.Web.Migrations
                     b.Property<bool>("HasCrossUnitBenefit")
                         .HasColumnType("bit");
 
+                    b.Property<string>("HasCrossUnitBenefitNote")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
                     b.Property<bool>("HasLongTermBenefit")
                         .HasColumnType("bit");
 
+                    b.Property<string>("HasLongTermBenefitNote")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
                     b.Property<bool>("HasPrimaryBenefit")
                         .HasColumnType("bit");
+
+                    b.Property<string>("HasPrimaryBenefitNote")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
 
                     b.Property<DateTime?>("PlannedEndDate")
                         .HasColumnType("datetime2");
@@ -389,6 +413,10 @@ namespace ProjectManagement.Web.Migrations
 
                     b.Property<int?>("SystemCategoryId")
                         .HasColumnType("int");
+
+                    b.Property<string>("SystemName")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
 
                     b.Property<string>("Title")
                         .IsRequired()
@@ -537,6 +565,10 @@ namespace ProjectManagement.Web.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
+                    b.Property<string>("ApplicationTicketNumber")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
@@ -557,17 +589,37 @@ namespace ProjectManagement.Web.Migrations
                     b.Property<int?>("DifficultyAfter")
                         .HasColumnType("int");
 
+                    b.Property<string>("DifficultyAfterNote")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
                     b.Property<int?>("DifficultyBefore")
                         .HasColumnType("int");
+
+                    b.Property<string>("DifficultyBeforeNote")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
 
                     b.Property<bool>("HasCrossUnitBenefit")
                         .HasColumnType("bit");
 
+                    b.Property<string>("HasCrossUnitBenefitNote")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
                     b.Property<bool>("HasLongTermBenefit")
                         .HasColumnType("bit");
 
+                    b.Property<string>("HasLongTermBenefitNote")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
                     b.Property<bool>("HasPrimaryBenefit")
                         .HasColumnType("bit");
+
+                    b.Property<string>("HasPrimaryBenefitNote")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -603,6 +655,10 @@ namespace ProjectManagement.Web.Migrations
 
                     b.Property<int?>("SystemCategoryId")
                         .HasColumnType("int");
+
+                    b.Property<string>("SystemName")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("datetime2");

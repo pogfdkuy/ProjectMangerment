@@ -3,8 +3,7 @@
 @rendermode InteractiveServer
 @using ProjectManagement.Web.Models
 @using ProjectManagement.Web.Services
-@inject IProjectService ProjectService
-@inject IRequirementService RequirementService
+@inject IReportService ReportService
 
 <PageTitle>效益分數統計</PageTitle>
 
@@ -43,6 +42,9 @@ else
                 <button class="btn btn-outline-secondary" @onclick="ResetFilters">清除篩選</button>
             </div>
         }
+        <div class="col-auto">
+            <a class="btn btn-success" href="@ExportUrl">匯出 Excel</a>
+        </div>
     </div>
 
     <h4>完成度分布<span class="text-muted small">（依上方日期區間；不受「完成狀態」篩選影響，方便對照）</span></h4>
@@ -167,38 +169,22 @@ else
     private DateTime? filterEndDate;
     private string completionFilter = "all";
 
+    /// <summary>匯出端點的網址，帶上目前畫面上的篩選條件，讓匯出的 Excel 跟畫面上看到的資料一致。</summary>
+    private string ExportUrl
+    {
+        get
+        {
+            var query = new List<string>();
+            if (filterStartDate is not null) query.Add($"start={filterStartDate.Value:yyyy-MM-dd}");
+            if (filterEndDate is not null) query.Add($"end={filterEndDate.Value:yyyy-MM-dd}");
+            if (completionFilter != "all") query.Add($"completion={completionFilter}");
+            return "/reports/scores/export" + (query.Count > 0 ? "?" + string.Join("&", query) : "");
+        }
+    }
+
     protected override async Task OnInitializedAsync()
     {
-        var projects = await ProjectService.GetListAsync();
-        var requirements = await RequirementService.GetListAsync();
-
-        var projectRows = projects.Select(p => new ScoreRow(
-            "專案",
-            p.Name,
-            p.ResponsibleDisplayName ?? "未指派",
-            p.Status == ProjectStatus.Completed || p.CompletionPercent >= 100,
-            p.CreatedAt,
-            p.DifficultyBefore,
-            p.DifficultyAfter,
-            p.DifficultyReductionScore,
-            p.BenefitScore,
-            p.TotalScore,
-            $"/projects/{p.Id}"));
-
-        var requirementRows = requirements.Select(r => new ScoreRow(
-            "需求",
-            r.Title,
-            r.ResponsibleDisplayName ?? "未指派",
-            r.Status == RequirementStatus.Completed,
-            r.CreatedAt,
-            r.DifficultyBefore,
-            r.DifficultyAfter,
-            r.DifficultyReductionScore,
-            r.BenefitScore,
-            r.TotalScore,
-            $"/requirements/{r.Id}"));
-
-        allRows = projectRows.Concat(requirementRows).ToList();
+        allRows = await ReportService.GetScoreRowsAsync();
 
         ApplyFilters();
     }
@@ -250,8 +236,6 @@ else
         completionFilter = "all";
         ApplyFilters();
     }
-
-    private record ScoreRow(string Type, string Title, string Owner, bool IsCompleted, DateTime CreatedAt, int? DifficultyBefore, int? DifficultyAfter, int DifficultyReductionScore, int BenefitScore, int TotalScore, string Url);
 
     private record OwnerSummary(string Owner, int ProjectCount, int RequirementCount, int TotalScore);
 }

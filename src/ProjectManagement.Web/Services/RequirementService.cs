@@ -102,6 +102,8 @@ public class RequirementService(IDbContextFactory<ApplicationDbContext> dbFactor
         existing.Title = requirement.Title;
         existing.Description = requirement.Description;
         existing.Remarks = requirement.Remarks;
+        existing.SystemName = requirement.SystemName;
+        existing.ApplicationTicketNumber = requirement.ApplicationTicketNumber;
         existing.DepartmentId = requirement.DepartmentId;
         existing.SystemCategoryId = requirement.SystemCategoryId;
         existing.ResponsibleUserId = requirement.ResponsibleUserId;
@@ -114,10 +116,15 @@ public class RequirementService(IDbContextFactory<ApplicationDbContext> dbFactor
         existing.PlannedStartDate = requirement.PlannedStartDate;
         existing.PlannedEndDate = requirement.PlannedEndDate;
         existing.DifficultyBefore = requirement.DifficultyBefore;
+        existing.DifficultyBeforeNote = requirement.DifficultyBeforeNote;
         existing.DifficultyAfter = requirement.DifficultyAfter;
+        existing.DifficultyAfterNote = requirement.DifficultyAfterNote;
         existing.HasPrimaryBenefit = requirement.HasPrimaryBenefit;
+        existing.HasPrimaryBenefitNote = requirement.HasPrimaryBenefitNote;
         existing.HasLongTermBenefit = requirement.HasLongTermBenefit;
+        existing.HasLongTermBenefitNote = requirement.HasLongTermBenefitNote;
         existing.HasCrossUnitBenefit = requirement.HasCrossUnitBenefit;
+        existing.HasCrossUnitBenefitNote = requirement.HasCrossUnitBenefitNote;
         existing.UpdatedAt = DateTime.UtcNow;
 
         await db.SaveChangesAsync();

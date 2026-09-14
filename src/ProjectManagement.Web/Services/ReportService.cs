@@ -242,6 +242,64 @@ public class ReportService(IDbContextFactory<ApplicationDbContext> dbFactory) : 
         return items.OrderBy(i => i.Date).ToList();
     }
 
+    public async Task<List<ScoreRow>> GetScoreRowsAsync()
+    {
+        await using var db = await dbFactory.CreateDbContextAsync();
+
+        var projects = await db.Projects
+            .Include(p => p.ResponsibleUser)
+            .Include(p => p.SubTasks)
+            .ToListAsync();
+
+        var requirements = await db.GeneralRequirements
+            .Include(r => r.ResponsibleUser)
+            .ToListAsync();
+
+        var projectRows = projects.Select(p => new ScoreRow(
+            "專案",
+            p.Name,
+            p.ResponsibleDisplayName ?? "未指派",
+            p.Status == ProjectStatus.Completed || p.CompletionPercent >= 100,
+            p.CreatedAt,
+            p.DifficultyBefore,
+            p.DifficultyBeforeNote,
+            p.DifficultyAfter,
+            p.DifficultyAfterNote,
+            p.HasPrimaryBenefit,
+            p.HasPrimaryBenefitNote,
+            p.HasLongTermBenefit,
+            p.HasLongTermBenefitNote,
+            p.HasCrossUnitBenefit,
+            p.HasCrossUnitBenefitNote,
+            p.DifficultyReductionScore,
+            p.BenefitScore,
+            p.TotalScore,
+            $"/projects/{p.Id}"));
+
+        var requirementRows = requirements.Select(r => new ScoreRow(
+            "需求",
+            r.Title,
+            r.ResponsibleDisplayName ?? "未指派",
+            r.Status == RequirementStatus.Completed,
+            r.CreatedAt,
+            r.DifficultyBefore,
+            r.DifficultyBeforeNote,
+            r.DifficultyAfter,
+            r.DifficultyAfterNote,
+            r.HasPrimaryBenefit,
+            r.HasPrimaryBenefitNote,
+            r.HasLongTermBenefit,
+            r.HasLongTermBenefitNote,
+            r.HasCrossUnitBenefit,
+            r.HasCrossUnitBenefitNote,
+            r.DifficultyReductionScore,
+            r.BenefitScore,
+            r.TotalScore,
+            $"/requirements/{r.Id}"));
+
+        return projectRows.Concat(requirementRows).OrderByDescending(r => r.TotalScore).ToList();
+    }
+
     /// <summary>週一為每週的第一天。</summary>
     private static DateTime StartOfWeek(DateTime date)
     {

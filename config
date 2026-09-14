@@ -1,5 +1,5 @@
 [core]
-	bare = true
+	bare = false
 	repositoryformatversion = 0
 	filemode = false
 	symlinks = false

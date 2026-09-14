@@ -94,6 +94,8 @@ public class ProjectService(IDbContextFactory<ApplicationDbContext> dbFactory, I
         existing.Name = project.Name;
         existing.Description = project.Description;
         existing.Remarks = project.Remarks;
+        existing.SystemName = project.SystemName;
+        existing.ApplicationTicketNumber = project.ApplicationTicketNumber;
         existing.DepartmentId = project.DepartmentId;
         existing.SystemCategoryId = project.SystemCategoryId;
         existing.ResponsibleUserId = project.ResponsibleUserId;
@@ -106,10 +108,15 @@ public class ProjectService(IDbContextFactory<ApplicationDbContext> dbFactory, I
         existing.PlannedStartDate = project.PlannedStartDate;
         existing.PlannedEndDate = project.PlannedEndDate;
         existing.DifficultyBefore = project.DifficultyBefore;
+        existing.DifficultyBeforeNote = project.DifficultyBeforeNote;
         existing.DifficultyAfter = project.DifficultyAfter;
+        existing.DifficultyAfterNote = project.DifficultyAfterNote;
         existing.HasPrimaryBenefit = project.HasPrimaryBenefit;
+        existing.HasPrimaryBenefitNote = project.HasPrimaryBenefitNote;
         existing.HasLongTermBenefit = project.HasLongTermBenefit;
+        existing.HasLongTermBenefitNote = project.HasLongTermBenefitNote;
         existing.HasCrossUnitBenefit = project.HasCrossUnitBenefit;
+        existing.HasCrossUnitBenefitNote = project.HasCrossUnitBenefitNote;
         existing.UpdatedAt = DateTime.UtcNow;
 
         await db.SaveChangesAsync();
